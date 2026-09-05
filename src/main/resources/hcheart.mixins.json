@@ -6,7 +6,6 @@
 		"PlayerMixin",
 		"WardenMixin",
 		"ServerGamePacketListenerImplMixin",
-		"PlayerListMixin",
 		"BeaconPaymentSlotMixin",
 		"IngredientMixin"
 	],

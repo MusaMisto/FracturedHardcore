@@ -15,6 +15,12 @@ public class CommandGameTests {
 		server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command);
 	}
 
+	/** Run a command as the player themselves (no op permission). */
+	private static void runAs(ServerPlayer p, String command) {
+		MinecraftServer server = p.level().getServer();
+		server.getCommands().performPrefixedCommand(p.createCommandSourceStack(), command);
+	}
+
 	@GameTest
 	public void setWritesCountersAndReappliesLiveState(GameTestHelper helper) {
 		ServerPlayer p = TestPlayers.join(helper, "cmd_set", new Vec3(4, 2, 4));
@@ -48,6 +54,39 @@ public class CommandGameTests {
 			helper.assertValueEqual(p.getAttribute(Attributes.MAX_HEALTH).getBaseValue(), 20.0, "base normalised");
 			helper.assertValueEqual(p.getHealth(), 20.0f, "full health");
 			helper.assertValueEqual(p.gameMode(), GameType.SURVIVAL, "back to survival");
+		} finally {
+			TestPlayers.leave(p);
+		}
+		helper.succeed();
+	}
+
+	@GameTest
+	public void giveUpWhileDownedIsATrueDeath(GameTestHelper helper) {
+		ServerPlayer p = TestPlayers.join(helper, "cmd_giveup", new Vec3(4, 2, 4));
+		try {
+			DownedGameTests.lethal(p);
+			helper.assertTrue(Hc.state().get(p.getUUID()).isDowned(), "downed");
+			runAs(p, "hc giveup"); // step 1: prompt only
+			helper.assertTrue(p.isAlive() && !p.isDeadOrDying(), "the prompt alone never kills");
+			helper.assertTrue(Hc.state().get(p.getUUID()).isDowned(), "still downed after the prompt");
+			runAs(p, "hc giveup confirm"); // step 2
+			helper.assertTrue(p.isDeadOrDying(), "dead");
+			helper.assertValueEqual(Hc.state().get(p.getUUID()).deaths(), 1, "counted as a true death");
+			helper.assertFalse(Hc.state().get(p.getUUID()).isDowned(), "downed cleared");
+		} finally {
+			TestPlayers.leave(p);
+		}
+		helper.succeed();
+	}
+
+	@GameTest
+	public void giveUpIsRefusedWhenNotDowned(GameTestHelper helper) {
+		ServerPlayer p = TestPlayers.join(helper, "cmd_giveup2", new Vec3(4, 2, 4));
+		try {
+			runAs(p, "hc giveup confirm");
+			helper.assertTrue(p.isAlive() && !p.isDeadOrDying(), "alive");
+			helper.assertValueEqual(Hc.state().get(p.getUUID()).deaths(), 0, "no death counted");
+			helper.assertValueEqual(p.getHealth(), 20.0f, "health untouched");
 		} finally {
 			TestPlayers.leave(p);
 		}

@@ -16,6 +16,5 @@ public final class DeathRules {
 
 	public static boolean blocksDamageWhileDowned(PlayerRecord rec, boolean bypassesInvulnerability) { return rec.isDowned() && !bypassesInvulnerability; }
 	public static boolean respawnsAsSpectator(PlayerRecord rec) { return rec.eliminated(); }
-	public static boolean showsHardcoreUi(PlayerRecord rec) { return rec.finalLife(); }
 	public static boolean shouldRescueFromSpectator(PlayerRecord rec, boolean isSpectator) { return isSpectator && !rec.eliminated(); }
 }

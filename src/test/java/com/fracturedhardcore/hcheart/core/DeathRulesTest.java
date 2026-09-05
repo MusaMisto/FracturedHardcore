@@ -22,10 +22,6 @@ class DeathRulesTest {
 		assertFalse(DeathRules.respawnsAsSpectator(rec(3, 0)));
 		assertTrue(DeathRules.respawnsAsSpectator(rec(4, 0)));
 	}
-	@Test void hardcoreUiOnFinalLife() {
-		assertFalse(DeathRules.showsHardcoreUi(rec(2, 0)));
-		assertTrue(DeathRules.showsHardcoreUi(rec(3, 0)));
-	}
 	@Test void rescueStrandedSpectatorsUnlessEliminated() {
 		assertTrue(DeathRules.shouldRescueFromSpectator(rec(0, 0), true));
 		assertTrue(DeathRules.shouldRescueFromSpectator(rec(3, 0), true));

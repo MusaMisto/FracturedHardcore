@@ -66,6 +66,21 @@ public final class DownedManager {
 		server.getPlayerList().broadcastSystemMessage(
 				Text.warn(name(player) + " is downed in " + where + " — " + Text.mmss(Rules.DOWNED_DURATION_TICKS) + " to revive them."), false);
 		player.sendSystemMessage(Text.gold("You are downed. Crawl to safety — a friend can right-click you to revive you."), false);
+		player.sendSystemMessage(Text.info("Nobody around? ").append(Text.link("[Give up]", "/hc giveup", "Skip the clock and accept the death now"))
+				.append(Text.info(" or type /hc giveup to accept the death now.")), false);
+	}
+
+	/**
+	 * Player-initiated bleed-out (/hc giveup confirm). Same death path as the clock running out, so the penalty is identical.
+	 * @return false if the player is not downed; nothing happens then.
+	 */
+	public boolean giveUp(ServerPlayer player) {
+		PlayerRecord rec = state.get(player.getUUID());
+		if (!rec.isDowned() || player.isDeadOrDying()) return false;
+		state.audit().log(player.getUUID(), name(player), "GAVE_UP", Text.mmss(rec.downedTicksRemaining(state.now())) + " left on the clock");
+		server.getPlayerList().broadcastSystemMessage(Text.warn(name(player) + " gave up and accepted the death."), false);
+		bleedOut(player);
+		return true;
 	}
 
 	/** Re-apply presentation from persisted state (join after crash/relog). */

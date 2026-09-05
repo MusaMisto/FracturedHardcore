@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/Loom-1.17-1F6FEB" alt="Fabric Loom 1.17">
   <img src="https://img.shields.io/badge/Mappings-Mojang%20official-5865F2" alt="Mojang mappings">
   <img src="https://img.shields.io/badge/Side-server--only-2EA043" alt="server-side only">
-  <img src="https://img.shields.io/badge/Tests-23%20unit%20%C2%B7%2031%20gametest-2EA043" alt="Tests: 23 unit, 31 gametest">
+  <img src="https://img.shields.io/badge/Tests-22%20unit%20%C2%B7%2033%20gametest-2EA043" alt="Tests: 22 unit, 33 gametest">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/MusaMisto/FracturedHardcore" alt="license"></a>
   <img src="https://img.shields.io/github/last-commit/MusaMisto/FracturedHardcore" alt="last commit">
 </p>
@@ -72,6 +72,9 @@ When lethal damage arrives and you are **not** on your final life, you do not di
 - You cannot attack, place, break, use items or interact with anything. Attempts get an action-bar notice.
 - A red boss bar, visible to everyone online, shows who is downed and the time left: **180 seconds of world time**, so
   logging out does not pause it. When it runs out you **bleed out** and die for real.
+- Alone on the server, or nobody can reach you? Click **[Give up]** in the downed message or run `/hc giveup`, then
+  confirm. You bleed out immediately and take the normal death penalty: it is the same death path as the clock running
+  out, nothing more and nothing less.
 - Damage that bypasses invulnerability (the void, `/kill`) still kills you outright. That is a true death.
 - If the server crashes or you relog while downed, the state is restored from disk: still downed if time remains,
   bled out immediately if not.
@@ -90,8 +93,10 @@ A living player **right-clicks** the downed player and stays within **2 blocks**
 
 ### Tier 2: True death
 
-Bleeding out (or a bypass source) is a true death. You see the **vanilla death screen with a Respawn button**, respawn at
-your bed or world spawn, and your maximum health drops one step. A low bell plays for you; a quieter one for everyone
+Bleeding out, giving up, or a bypass source is a true death. The client shows the **hardcore death screen** ("Game over!"
+with a **Spectate world** button) because the world really is hardcore and your hearts carry the hardcore look at all
+times. The button respawns you normally: you appear at your bed or world spawn and your maximum health drops one step.
+Only an eliminated player actually becomes a spectator. A low bell plays for you; a quieter one for everyone
 else. Chat tells you your death count, the new cap, **what a Crimson Heart costs right now**, and how far you are from
 your final life. The tab list shows everyone's death count.
 
@@ -152,6 +157,8 @@ over from a crash. No `player.dat` editing, ever.
 |---|---|---|
 | `/hc info` | anyone | Your own record: deaths, restores used, max hearts, next Heart cost, status. |
 | `/hc info <player>` | op (level 2) | Same for any player, **online or offline** (resolves through the server's name cache). |
+| `/hc giveup` | anyone, only while downed | Step 1 of 2: explains the penalty and shows a clickable **[Confirm: give up]** link. Nothing happens yet. |
+| `/hc giveup confirm` | anyone, only while downed | Step 2 of 2: bleed out now, counted exactly like the clock running out. Refused with "You are not downed." otherwise. |
 | `/hc set <player> <deaths> <restores>` | op | Manual correction. Clears downed state. If the player is online, health cap, game mode (spectator ↔ survival) and scoreboard are re-derived immediately. |
 | `/hc reset all` | op | Wipes every record, normalises and heals everyone online, rescues spectators. Offline players are fixed on their next join. |
 | `/hc give <player> [count]` | op | Gives 1–64 Crimson Hearts. |
@@ -161,7 +168,7 @@ over from a crash. No `player.dat` editing, ever.
 | Path | Purpose |
 |---|---|
 | `<world>/data/hcheart/players.dat` | Persistent state, vanilla `SavedData` (NBT). Flushed **synchronously** on every mutation. Included in normal world saves and backups. |
-| `logs/hcheart-audit.log` | Append-only audit trail: ISO timestamp, UUID, name, event (`INIT`, `DEATH`, `RESTORE`, `DOWNED`, `DOWNED_CLEARED`, `REVIVED`, `SET`, `RESET`, `GIVE`, `RENAME`, `RESTORE_SHORT`), details. Read this when someone says they were shorted at 2 a.m. |
+| `logs/hcheart-audit.log` | Append-only audit trail: ISO timestamp, UUID, name, event (`INIT`, `DEATH`, `RESTORE`, `DOWNED`, `DOWNED_CLEARED`, `REVIVED`, `GAVE_UP`, `SET`, `RESET`, `GIVE`, `RENAME`, `RESTORE_SHORT`), details. Read this when someone says they were shorted at 2 a.m. |
 | Scoreboard objective `deaths_hc` | Display name "Deaths", shown in the `list` slot (tab list). Mirrors each player's death count. |
 
 `scripts/backup.sh <server-dir> <backup-dir> [keep]` performs a rolling `save-off` → `save-all flush` → `tar` → `save-on`
@@ -215,7 +222,7 @@ the jar as an artifact.
 │   ├── core/                     PURE JAVA, no Minecraft imports, unit-tested
 │   │   ├── Rules.java            every tunable constant
 │   │   ├── PlayerRecord.java     immutable record + derived values (maxHearts, finalLife, eliminated, restoreCost, …)
-│   │   ├── DeathRules.java       lethal-damage outcome, damage blocking, spectator/hardcore-UI/rescue decisions
+│   │   ├── DeathRules.java       lethal-damage outcome, damage blocking, spectator/rescue decisions
 │   │   └── ReviveRules.java      drain schedule, entry/completion checks, break reasons
 │   ├── state/
 │   │   ├── HeartCodecs.java      Codec<PlayerRecord>, Codec<Map<UUID, PlayerRecord>>
@@ -225,7 +232,7 @@ the jar as an artifact.
 │   ├── health/HealthService.java   max-health base reset + one transient penalty modifier + clamp
 │   ├── join/JoinHandler.java       runs on every join; RespawnService.java rescues spectators
 │   ├── downed/
-│   │   ├── DownedManager.java    enter / reenter / clear / bleedOut / tick / boss bars / de-target sweep
+│   │   ├── DownedManager.java    enter / reenter / clear / bleedOut / giveUp / tick / boss bars / de-target sweep
 │   │   ├── DownedEvents.java     ALLOW_DEATH, ALLOW_DAMAGE, interaction lock
 │   │   ├── ReviveManager.java    one channel per target; tick; break handling; success
 │   │   ├── ReviveEvents.java     UseEntityCallback → tryStart
@@ -237,7 +244,7 @@ the jar as an artifact.
 │   ├── heart/HeartItem.java        detection, creation, counting/removal, UseItemCallback consume handler
 │   ├── command/HcCommand.java      /hc tree and applyLive
 │   ├── scoreboard/ScoreboardService.java  deaths_hc objective
-│   └── mixin/                    six small mixins (see Vanilla touchpoints)
+│   └── mixin/                    five small mixins (see Vanilla touchpoints)
 ├── src/main/resources/
 │   ├── fabric.mod.json, hcheart.mixins.json, assets/hcheart/icon.png
 │   └── data/hcheart/             recipe/crimson_heart.json, advancement/crafted_crimson_heart.json, function/crafted.mcfunction
@@ -273,13 +280,13 @@ flowchart TB
         M3["HeartStateService — the only writer"]
         M4[(HeartState SavedData)]
         M5["AuditLog · ScoreboardService"]
-        MX["6 mixins"]
+        MX["5 mixins"]
         C["core: PlayerRecord · DeathRules · ReviveRules · Rules"]
     end
     V1 --> E1 --> M1
     V2 --> E2 --> M1
     V4 -. targeting, pose, ingredient, slot .-> MX
-    V2 & V3 -. hardcore flag, spectator switch .-> MX
+    V3 -. spectator switch .-> MX
     E3 --> M1
     M1 --> M2 --> M3
     M1 --> M3
@@ -309,7 +316,7 @@ stateDiagram-v2
     Alive --> Downed: lethal damage while deaths < 3 (ALLOW_DEATH false, health 1)
     Alive --> Dead: lethal damage on final life, or bypass damage (void, /kill)
     Downed --> Alive: revived by an 8 s channel, no penalty
-    Downed --> Dead: bleed-out after 180 s (generic_kill) or bypass damage
+    Downed --> Dead: bleed-out after 180 s or /hc giveup confirm (generic_kill), or bypass damage
     Dead --> Alive: AFTER_DEATH deaths+1, respawn with cap max(4, 10 − 2·deaths)
     Dead --> Eliminated: deaths reaches 4, respawn as spectator
     Alive --> Alive: Crimson Heart consumed, deaths−1, restoresUsed+1
@@ -330,7 +337,8 @@ and jump −100 % transient modifiers, clears mob targets and Warden anger withi
 **While downed** (`DownedManager.tick`, `END_SERVER_TICK`): bleed out when expired; otherwise pin health at 1, reassert glow
 and pose, every 20 ticks re-sweep targets and refresh the bar. `ALLOW_DAMAGE` returns false for non-bypass damage.
 Five interaction callbacks return `FAIL` for a downed actor (registered **before** the revive and Heart handlers so the lock
-wins).
+wins). `/hc giveup` (chat prompt with a confirm link) then `/hc giveup confirm` → `DownedManager.giveUp`: refuse unless
+downed, audit `GAVE_UP`, broadcast, `bleedOut`. Commands are not covered by the interaction lock, so a downed player can run them.
 
 **Revive** (`ReviveEvents` → `ReviveManager.tryStart`, then `ReviveManager.tick`): a `Channel` records reviver, target,
 start position, elapsed ticks and last `hurtTime` of both. Each tick: compute `ReviveRules.check(...)`; on a break reason,
@@ -341,8 +349,9 @@ ticks, and at 160 → `DownedManager.clear`, refill health, sound, broadcast, au
 never reaches it → `DownedManager.clear` → `recordDeath` (deaths+1, downed cleared) → line and quiet bell to everyone else.
 `AFTER_RESPAWN` fires at `PlayerList.respawn` TAIL (`alive == false` for deaths; `true` is an End-portal trip and only swaps
 boss-bar viewers) → `normalize` + refill → eliminated: title, subtitle, chat; else: bell to that player, chat lines.
-Two mixins decide the client-facing side: the login packet's `hardcore` flag = `finalLife()`, and the `PERFORM_RESPAWN`
-spectator switch = `eliminated()`.
+One mixin decides the client-facing side: the `PERFORM_RESPAWN` spectator switch = `eliminated()`. The login packet's
+`hardcore` flag is left to vanilla, so on a hardcore world every player sees hardcore hearts and the "Game over! /
+Spectate world" death screen; that button still respawns a non-eliminated player in survival.
 
 **Crimson Heart** (`HeartItem.consume`, `UseItemCallback`): not downed, not on cooldown, `canRestore()`, enough hearts →
 `HeartStateService.restore` (persist + flush **first**) → `normalize` + refill → remove `restoreCost()` hearts (held stack
@@ -364,7 +373,6 @@ Everything the mod depends on in Minecraft or Fabric API, so an upgrade can be c
 | Mixin | `Player.updatePlayerPose()` HEAD, cancellable | keep the server pose `SWIMMING` while downed |
 | Mixin | `Warden.canTargetEntity(Entity)` HEAD, cancellable | Warden anger/attacks ignore downed players |
 | Mixin | `ServerGamePacketListenerImpl.handleClientCommand` → `@WrapOperation` on `MinecraftServer.isHardcore()` | spectator only when eliminated |
-| Mixin | `PlayerList.placeNewPlayer` → `@WrapOperation` on `LevelData.isHardcore()` | client hardcore UI only on final life |
 | Mixin | `BeaconMenu$PaymentSlot.mayPlace` HEAD, cancellable | reject Hearts (safety net; vanilla's payment tag has no nether star) |
 | Mixin | `Ingredient.test(ItemStack)` HEAD, cancellable | Hearts are never a recipe ingredient |
 | API | `SavedDataType`, `MinecraftServer.getDataStorage().computeIfAbsent/saveAndJoin`, `DataFixTypes.SAVED_DATA_COMMAND_STORAGE` (opaque type, never rewritten by fixers) | persistence |
@@ -400,8 +408,8 @@ boolean isDowned()    = downedUntilTick > 0           // absolute overworld game
    `HealthService.normalize`, which is idempotent and safe to call repeatedly.
 4. **Deaths are counted in `AFTER_DEATH`, never in `ALLOW_DEATH`.** Returning `true` from `ALLOW_DEATH` does not guarantee a
    death (a totem may fire). Counting early would charge a death that never happened, the worst direction of error.
-5. **Bleed-out kills with `generic_kill`** (bypasses invulnerability, totems, armour) and is the only downed → dead route
-   besides bypass damage.
+5. **Bleed-out kills with `generic_kill`** (bypasses invulnerability, totems, armour). The clock expiring and
+   `/hc giveup confirm` both go through `DownedManager.bleedOut`; it is the only downed → dead route besides bypass damage.
 6. **Attribute modifiers are transient with stable ids** (`hcheart:heart_penalty`, `hcheart:downed_speed`,
    `hcheart:downed_jump`). Nothing of ours is written to `player.dat`; join and respawn are the single source of truth.
 7. **The base max-health value is reset to 20 on every join and respawn**, unconditionally.
@@ -432,7 +440,7 @@ All in `core/Rules.java`. Changing them changes unit-test expectations too.
 
 **Gametests** (`src/gametest`, `fabric-gametest-api-v1`): a headless `GameTestServer` boots with the mod and runs every
 `@GameTest` method listed in `src/gametest/resources/fabric.mod.json`. They exercise the real event chain, mixins,
-datapack and commands. Six classes, 31 tests:
+datapack and commands. Six classes, 33 tests:
 
 | Class | Covers |
 |---|---|
@@ -441,7 +449,7 @@ datapack and commands. Six classes, 31 tests:
 | `ReviveGameTests` | success with exact hunger drain, hungry reviver refused, single-reviver lock, breaks on move / damage / starvation |
 | `DeathGameTests` | cap after respawn, Respawn keeps survival until elimination, elimination → spectator, totem only on final life |
 | `HeartGameTests` | recipe loads and crafts, Hearts never an ingredient, beacon slot guard, escalating cost, refusals, lifting final life |
-| `CommandGameTests` | `/hc set`, `/hc reset all` (isolated batch), `/hc give`, `/hc info` |
+| `CommandGameTests` | `/hc set`, `/hc reset all` (isolated batch), `/hc give`, `/hc info`, `/hc giveup` (prompt alone is harmless, confirm kills and counts, refused when not downed) |
 
 Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 
@@ -483,9 +491,10 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 
 ### Known limitations
 
-- The client caches the **hardcore flag at login**; it controls the Respawn vs Spectate button and the heart texture. A
-  player reaching final life mid-session keeps the Respawn button until they relog; a fourth death in that same session still
-  puts them in spectator with an explanatory title. No vanilla packet updates this flag without a reconnect.
+- The client derives **both** the heart texture and the death screen from one `hardcore` flag sent at login, and the mod
+  leaves that flag as vanilla (true on a hardcore world). So everyone sees hardcore hearts, and every death screen reads
+  "Game over!" with a **Spectate world** button. The button still respawns a non-eliminated player in survival; only an
+  eliminated player becomes a spectator. No vanilla packet separates the two, and the flag cannot change without a reconnect.
 - A downed player's **own camera** stays at standing height in open areas because the vanilla client computes its own pose;
   everyone else sees them prone, the server hitbox is prone, and in a 1-block gap the client crawls too.
 - Absorption and Health Boost stack on top of the reduced cap, as in vanilla.

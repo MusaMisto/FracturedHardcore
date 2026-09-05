@@ -36,6 +36,9 @@ public final class HcCommand {
 				.then(Commands.literal("info")
 						.executes(HcCommand::infoSelf)
 						.then(Commands.argument("player", GameProfileArgument.gameProfile()).requires(Commands.hasPermission(OP)).executes(HcCommand::info)))
+				.then(Commands.literal("giveup")
+						.executes(HcCommand::giveUpPrompt)
+						.then(Commands.literal("confirm").executes(HcCommand::giveUp)))
 				.then(Commands.literal("set").requires(Commands.hasPermission(OP))
 						.then(Commands.argument("player", GameProfileArgument.gameProfile())
 								.then(Commands.argument("deaths", IntegerArgumentType.integer(0))
@@ -68,6 +71,36 @@ public final class HcCommand {
 		for (NameAndId profile : GameProfileArgument.getGameProfiles(ctx, "player")) {
 			PlayerRecord rec = s.state().get(profile.id());
 			ctx.getSource().sendSuccess(() -> describe(s, profile.name(), rec), false);
+		}
+		return 1;
+	}
+
+	/** Step 1 of 2: explain the price and hand out the confirm link. Never kills on its own. */
+	private static int giveUpPrompt(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+		Services s = services(ctx);
+		if (s == null) return 0;
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		PlayerRecord rec = s.state().get(self.getUUID());
+		if (!rec.isDowned()) {
+			ctx.getSource().sendFailure(Text.warn("You are not downed."));
+			return 0;
+		}
+		PlayerRecord after = rec.withDeath();
+		String tail = after.finalLife() ? " hearts and be on your final life." : " hearts.";
+		self.sendSystemMessage(Text.warn("Giving up is a real death. You would respawn with " + after.maxHearts() + tail), false);
+		self.sendSystemMessage(Text.link("[Confirm: give up]", "/hc giveup confirm", "Die now and take the penalty")
+				.append(Text.info(" or type /hc giveup confirm.")), false);
+		return 1;
+	}
+
+	/** Step 2 of 2: bleed out now. Refused (no effect) unless the player is downed. */
+	private static int giveUp(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+		Services s = services(ctx);
+		if (s == null) return 0;
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		if (!s.downed().giveUp(self)) {
+			ctx.getSource().sendFailure(Text.warn("You are not downed."));
+			return 0;
 		}
 		return 1;
 	}

@@ -163,6 +163,8 @@ void normalize(ServerPlayer p, PlayerRecord rec) {
 7. Boss bar (`ServerBossEvent`, RED, PROGRESS) shown to **all online players**:
    `"<name> is downed · 2:59 · right-click to revive"`, progress = remaining/3600.
 8. Chat broadcast: `"<name> is downed in <dimension> at x, y, z — 3:00 to revive them."`
+9. Private chat to the downed player: how to be revived, plus a clickable **[Give up]** link that
+   runs `/hc giveup` (see **Give up** below).
 
 **While downed** (`ServerTickEvents.END_SERVER_TICK`, per online downed player):
 - `ALLOW_DAMAGE` returns `false` unless the source `is(BYPASSES_INVULNERABILITY)`.
@@ -182,6 +184,14 @@ sonic boom). The invisibility effect is **not** used.
 `player.hurtServer(level, damageSources().genericKill(), Float.MAX_VALUE)`. `generic_kill`
 bypasses invulnerability, totems and armour; the vanilla death message reads "<name> died", and
 the mod's own chat lines add the detail. This is the only downed → dead route besides bypass damage.
+
+**Give up** (`/hc giveup` → `/hc giveup confirm`, v0.1.1): a downed player alone on the server
+need not wait out the clock. Step 1 (`/hc giveup`) only prints the price ("You would respawn with
+N hearts …") and a clickable **[Confirm: give up]** link; step 2 (`/hc giveup confirm`) calls
+`DownedManager.giveUp`, which refuses unless the player is downed, audits `GAVE_UP` with the time
+left, broadcasts `"<name> gave up and accepted the death."`, then calls `bleedOut`. Because it is the
+same `generic_kill` path, the penalty is exactly a bleed-out. Both steps are `run_command` click
+events on vanilla chat components; the client sends them as ordinary unsigned commands.
 
 **Teardown** (`DownedManager.clear`, idempotent, used by revive, bleed-out, death, join):
 `downedUntilTick = 0` (persisted), glow off, pose reset to STANDING, remove both movement
@@ -245,21 +255,17 @@ when vanilla actually committed the death — a totem save never reaches it):
    `"Your run is over. You may spectate the world."`
 5. Scoreboard already synced in step 2 of AFTER_DEATH.
 
-**Respawn button.** Two server-side mixins:
+**Respawn button.** One server-side mixin:
 
 - `ServerGamePacketListenerImpl.handleClientCommand`: `@WrapOperation` on
   `MinecraftServer.isHardcore()` → returns `eliminated(player)`. Non-eliminated players respawn in
   survival; eliminated players get stock hardcore spectator behaviour.
-- `PlayerList.placeNewPlayer`: `@WrapOperation` on `LevelData.isHardcore()` → returns
-  `finalLife(player)`. A player not on final life sees a normal death screen with a **Respawn**
-  button and normal hearts; a final-life player sees hardcore hearts and "Game over! / Spectate world".
 
-**Known limitation (protocol-level, documented in README):** the client caches the hardcore flag at
-login. A player who reaches final life mid-session keeps the "Respawn" button until they relog; if
-they die again in the same session the button still reads "Respawn" but the server puts them in
-spectator and sends the run-over message. Relogging after the third death shows the correct
-hardcore UI. There is no vanilla packet to update this flag without a reconnect; forcing a
-reconnect was rejected as too disruptive.
+The `hardcore` flag in the login packet is **left to vanilla** (v0.1.1; see D11). On a hardcore
+world every player therefore sees hardcore hearts, and every death screen reads "Game over!" with a
+**Spectate world** button. That button sends the same `PERFORM_RESPAWN` as "Respawn", so the mixin
+above decides the outcome: survival respawn unless eliminated. The client derives both the heart
+texture and the death-screen wording from this one flag, and no vanilla packet separates them.
 
 Respawn location is vanilla's (bed/anchor, else world spawn) — untouched.
 
@@ -340,6 +346,8 @@ bar reference (state stays persisted).
 | Command | Behaviour |
 |---|---|
 | `/hc info` (anyone) | own record |
+| `/hc giveup` (anyone, downed only) | step 1: print the penalty and a clickable **[Confirm: give up]** link; no effect. |
+| `/hc giveup confirm` (anyone, downed only) | step 2: `DownedManager.giveUp` → audit `GAVE_UP`, broadcast, `bleedOut`. "You are not downed." otherwise. |
 | `/hc info <player>` | deaths, restores used, max hearts, next Heart cost, final-life / eliminated / downed (with seconds left). `<player>` is a `GameProfileArgument`, so **offline players resolve** via the server's name cache. |
 | `/hc set <player> <deaths> <restores>` | write both counters (clamped ≥ 0), clear downed, normalise if online (incl. spectator rescue / elimination), scoreboard, audit. |
 | `/hc reset all` | wipe the map, normalise every online player (base 20, full health, survival if spectator, downed teardown), clear the scoreboard objective scores, audit. Offline players are handled on their next join. |
@@ -380,14 +388,21 @@ set to the `list` slot. Written with `deaths` on every state change, by player *
 - **D9 · Deterministic hunger drain** (six discrete points per player at fixed ticks) instead of
   exhaustion arithmetic, so the amount is exact and unit-testable.
 - **D10 · Ingredient guard** added alongside the beacon guard (§8).
-- **D11 · Hardcore flag in the login packet** is driven by `finalLife()`, with the documented
-  staleness window (§6). No forced reconnects.
+- **D11 · Hardcore flag in the login packet** is left to vanilla (v0.1.1). v0.1.0 drove it from
+  `finalLife()` so non-final players got a "Respawn" button and normal hearts, at the cost of a
+  stale flag until relog. After the first live session the owner preferred the hardcore heart
+  texture for everyone; the price is the "Game over! / Spectate world" wording on every death
+  screen. The button still respawns non-eliminated players in survival (D2). No forced reconnects.
 - **D12 · Synchronous saved-data flush on every mutation** (§3) — closes the "inventory saved on
   disconnect but state lost on crash" window, which is the bad direction.
 - **D13 · Boss bar visible to everyone**, not just the downed player, so rescuers see the clock.
 - **D14 · Revive also breaks when reviver and target drift > 4 blocks apart** (the target can crawl).
 - **D15 · `/hc info` without argument** is usable by anyone for their own record.
 - **D16 · README heart ladder** corrected from "10 → 7 → 4" to the brief's "10 → 8 → 6 → 4".
+- **D17 · `/hc giveup` → `/hc giveup confirm`** (v0.1.1). A downed player alone on the server can
+  end the wait. Two steps so a stray click in chat cannot cost two hearts; the confirm reuses
+  `bleedOut`, so there is exactly one downed → dead route and the penalty is identical. Audit event
+  `GAVE_UP`. Requested by the owner after the first live session.
 - **Absorption / Health Boost** stack on top of the penalty (vanilla semantics; temporary, costly,
   and blocking them would need extra mixins for marginal benefit).
 
@@ -422,6 +437,7 @@ damage immunity while downed · bypass damage kills a downed player · zombie lo
 re-acquire the target; warden `canTargetEntity` false · revive success (no death counted, full
 health, teardown) · revive refused below 6 food · single reviver lock · revive breaks on reviver
 movement, on damage, on food 0 · bleed-out at expiry (death counted, respawn at 8 hearts) ·
+`/hc giveup` prompt is harmless, `/hc giveup confirm` kills and counts, refused when not downed ·
 final-life lockout (deaths=3 → lethal damage kills; deaths=4 → `PERFORM_RESPAWN` yields spectator) ·
 Heart consumption and escalating cost, refusal when short, restore from final life ·
 beacon slot rejects a Heart, `Ingredient` rejects a Heart, recipe loads and yields a Heart ·
@@ -447,8 +463,7 @@ src/main/java/com/fracturedhardcore/hcheart/
   command/HcCommand
   scoreboard/ScoreboardService
   mixin/ PlayerMixin (canBeSeenAsEnemy, updatePlayerPose), WardenMixin,
-         ServerGamePacketListenerImplMixin, PlayerListMixin,
-         BeaconPaymentSlotMixin, IngredientMixin
+         ServerGamePacketListenerImplMixin, BeaconPaymentSlotMixin, IngredientMixin
 src/main/resources/fabric.mod.json, hcheart.mixins.json,
   data/hcheart/recipe/crimson_heart.json,
   data/hcheart/advancement/crafted_crimson_heart.json, data/hcheart/function/crafted.mcfunction
