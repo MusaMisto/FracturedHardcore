@@ -6,7 +6,8 @@
 	"environment": "*",
 	"entrypoints": {
 		"fabric-gametest": [
-			"com.fracturedhardcore.hcheart.gametest.JoinGameTests"
+			"com.fracturedhardcore.hcheart.gametest.JoinGameTests",
+			"com.fracturedhardcore.hcheart.gametest.DownedGameTests"
 		]
 	},
 	"depends": {
