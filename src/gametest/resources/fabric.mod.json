@@ -9,7 +9,9 @@
 			"com.fracturedhardcore.hcheart.gametest.JoinGameTests",
 			"com.fracturedhardcore.hcheart.gametest.DownedGameTests",
 			"com.fracturedhardcore.hcheart.gametest.ReviveGameTests",
-			"com.fracturedhardcore.hcheart.gametest.DeathGameTests"
+			"com.fracturedhardcore.hcheart.gametest.DeathGameTests",
+			"com.fracturedhardcore.hcheart.gametest.HeartGameTests",
+			"com.fracturedhardcore.hcheart.gametest.CommandGameTests"
 		]
 	},
 	"depends": {
