@@ -1,0 +1,9 @@
+{
+	"schemaVersion": 1,
+	"id": "hcheart-gametest",
+	"version": "1.0.0",
+	"name": "Fractured Hardcore GameTests",
+	"environment": "*",
+	"entrypoints": { "fabric-gametest": [] },
+	"depends": { "hcheart": "*" }
+}

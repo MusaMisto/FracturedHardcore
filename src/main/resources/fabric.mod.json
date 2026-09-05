@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "hcheart",
+	"version": "${version}",
+	"name": "Fractured Hardcore",
+	"description": "Hardcore with a safety net: get downed instead of dying, lose two hearts per true death, and craft Crimson Hearts to claw them back. Server-side only.",
+	"authors": ["Musa Misto"],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["com.fracturedhardcore.hcheart.HcHeartMod"]
+	},
+	"mixins": ["hcheart.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
