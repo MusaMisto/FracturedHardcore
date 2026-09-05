@@ -34,7 +34,9 @@ public final class DeathEvents {
 		// Fires at PlayerList.respawn TAIL with the new entity fully in the world. alive == true is an End-portal trip, not a death.
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
 			Services s = HcHeartMod.services();
-			if (s == null || alive) return;
+			if (s == null) return;
+			s.downed().onViewerRespawned(oldPlayer, newPlayer);
+			if (alive) return;
 			PlayerRecord rec = s.state().get(newPlayer.getUUID());
 			HealthService.normalize(newPlayer, rec);
 			HealthService.refill(newPlayer);

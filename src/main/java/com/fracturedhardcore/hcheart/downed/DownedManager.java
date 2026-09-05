@@ -116,13 +116,25 @@ public final class DownedManager {
 			if (now % 20 == 0) {
 				sweepTargets(player);
 				ServerBossEvent bar = bars.get(player.getUUID());
-				if (bar == null) applyPresentation(player, rec);
-				else updateBar(player, rec, bar, now);
+				if (bar == null) {
+					applyPresentation(player, rec);
+				} else {
+					updateBar(player, rec, bar, now);
+					for (ServerPlayer viewer : server.getPlayerList().getPlayers()) bar.addPlayer(viewer); // idempotent; covers late joiners
+				}
 			}
 		}
 	}
 
 	public void onViewerJoined(ServerPlayer viewer) { bars.values().forEach(bar -> bar.addPlayer(viewer)); }
+
+	/** Respawn (death or End portal) creates a new ServerPlayer; swap it into every bar so no stale entity keeps receiving packets. */
+	public void onViewerRespawned(ServerPlayer oldPlayer, ServerPlayer newPlayer) {
+		bars.values().forEach(bar -> {
+			bar.removePlayer(oldPlayer);
+			bar.addPlayer(newPlayer);
+		});
+	}
 
 	public void onPlayerLeft(ServerPlayer player) { bars.values().forEach(bar -> bar.removePlayer(player)); }
 
