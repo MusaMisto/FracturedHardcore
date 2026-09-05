@@ -4,6 +4,12 @@
 	"version": "1.0.0",
 	"name": "Fractured Hardcore GameTests",
 	"environment": "*",
-	"entrypoints": { "fabric-gametest": [] },
-	"depends": { "hcheart": "*" }
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.fracturedhardcore.hcheart.gametest.JoinGameTests"
+		]
+	},
+	"depends": {
+		"hcheart": "*"
+	}
 }
