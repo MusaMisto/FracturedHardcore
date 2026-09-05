@@ -10,7 +10,11 @@ import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
@@ -32,8 +36,17 @@ final class TestPlayers {
 		server.getPlayerList().placeNewPlayer(connection, player, cookie);
 		markClientLoaded(player);
 		player.setGameMode(GameType.SURVIVAL);
+		// Solid footing: the default test structure is empty air.
+		helper.setBlock(new BlockPos(Mth.floor(relativePos.x), Mth.floor(relativePos.y) - 1, Mth.floor(relativePos.z)), Blocks.STONE);
 		Vec3 abs = helper.absoluteVec(relativePos);
 		player.teleportTo(helper.getLevel(), abs.x, abs.y, abs.z, Set.of(), 0f, 0f, false);
+		// A real connection is ticked by the network listener, which calls Player.tick() (cooldowns, food, pose...).
+		// The mock connection is not registered there, so tick it from the test instead.
+		ServerGamePacketListenerImpl listener = player.connection;
+		helper.onEachTick(() -> {
+			ServerPlayer current = listener.player;
+			if (current != null && !current.isRemoved() && server.getPlayerList().getPlayer(current.getUUID()) == current) listener.tick();
+		});
 		player.getFoodData().setFoodLevel(20);
 		player.getFoodData().setSaturation(5f);
 		return player;

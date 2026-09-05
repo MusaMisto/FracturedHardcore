@@ -6,7 +6,9 @@
 		"PlayerMixin",
 		"WardenMixin",
 		"ServerGamePacketListenerImplMixin",
-		"PlayerListMixin"
+		"PlayerListMixin",
+		"BeaconPaymentSlotMixin",
+		"IngredientMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

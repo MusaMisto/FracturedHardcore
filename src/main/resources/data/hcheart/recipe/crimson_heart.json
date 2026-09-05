@@ -1,0 +1,20 @@
+{
+	"type": "minecraft:crafting_shaped",
+	"category": "misc",
+	"pattern": ["ENE", "N*N", "ENE"],
+	"key": {
+		"E": "minecraft:echo_shard",
+		"N": "minecraft:netherite_scrap",
+		"*": "minecraft:nether_star"
+	},
+	"result": {
+		"id": "minecraft:nether_star",
+		"count": 1,
+		"components": {
+			"minecraft:custom_data": { "hcheart": true },
+			"minecraft:custom_name": { "text": "Crimson Heart", "color": "red", "italic": false },
+			"minecraft:rarity": "epic",
+			"minecraft:enchantment_glint_override": true
+		}
+	}
+}
