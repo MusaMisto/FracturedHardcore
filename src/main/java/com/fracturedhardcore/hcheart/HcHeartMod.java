@@ -2,6 +2,7 @@ package com.fracturedhardcore.hcheart;
 
 import com.fracturedhardcore.hcheart.death.DeathEvents;
 import com.fracturedhardcore.hcheart.downed.DownedEvents;
+import com.fracturedhardcore.hcheart.downed.ReviveEvents;
 import com.fracturedhardcore.hcheart.join.JoinHandler;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
@@ -28,6 +29,7 @@ public final class HcHeartMod implements ModInitializer {
 			services.downed().onPlayerLeft(player);
 		});
 		DownedEvents.register();
+		ReviveEvents.register();
 		DeathEvents.register();
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			if (services == null) return;
