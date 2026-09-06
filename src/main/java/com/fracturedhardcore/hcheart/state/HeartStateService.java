@@ -65,6 +65,18 @@ public final class HeartStateService {
 
 	public PlayerRecord clearDowned(UUID id, String reason) { return commit(id, state.get(id).withDownedCleared(), "DOWNED_CLEARED", reason); }
 
+	/** A revive channel holds the clock: what is left on it is stored and the deadline stops mattering until resume. */
+	public PlayerRecord pauseDowned(UUID id, String reason) {
+		PlayerRecord rec = state.get(id).withDownedPaused(now());
+		return commit(id, rec, "DOWNED_PAUSED", rec.downedPausedTicks() + " ticks left · " + reason);
+	}
+
+	/** The channel ended without a revive: the clock runs again from what was left on it. */
+	public PlayerRecord resumeDowned(UUID id, String reason) {
+		PlayerRecord rec = state.get(id).withDownedResumed(now());
+		return commit(id, rec, "DOWNED_RESUMED", "until=" + rec.downedUntilTick() + " · " + reason);
+	}
+
 	public PlayerRecord set(UUID id, int deaths, int restores, String actor) {
 		return commit(id, state.get(id).withCounters(deaths, restores).withDownedCleared(), "SET", "deaths=" + deaths + " restores=" + restores + " by " + actor);
 	}

@@ -73,7 +73,7 @@ Key vanilla facts (read from the decompiled 26.2 sources):
 Per player, persisted (world-level `SavedData`, keyed by UUID):
 
 ```java
-record PlayerRecord(int deaths, int restoresUsed, long downedUntilTick, String lastKnownName)
+record PlayerRecord(int deaths, int restoresUsed, long downedUntilTick, long downedPausedTicks, String lastKnownName)
 ```
 
 Derived (pure Java, unit-tested, no Minecraft imports):
@@ -84,6 +84,7 @@ boolean finalLife()    { return deaths >= 3; }                    // alive at 4 
 boolean eliminated()   { return deaths >= 4; }                    // run over → spectator
 int     restoreCost()  { return restoresUsed + 1; }               // 1, 2, 3, … never resets
 boolean isDowned()     { return downedUntilTick > 0; }
+boolean isDownedPaused() { return isDowned() && downedPausedTicks > 0; }   // 0.1.3: a revive channel holds the clock
 ```
 
 **`eliminated()` is an addition.** The brief uses `finalLife()` both for "the downed state no
@@ -96,6 +97,9 @@ Invariants:
 - `deaths` increments only in the true-death handler; decrements only by Heart restore, never below 0.
 - `restoresUsed` never decreases (except `/hc reset` / `/hc set`).
 - `downedUntilTick` is an absolute overworld game-time tick, 0 when not downed.
+- `downedPausedTicks` (0.1.3) is what is left on the clock while a revive channel holds it; 0 means
+  the clock is running. Only `pauseDowned`/`resumeDowned` change it; a fresh clock or a clear resets
+  it, and a value without a clock is dropped on construction. `downedExpired` is false while paused.
 - `lastKnownName` is refreshed on every join; it lets `/hc info`, the scoreboard and the audit
   log work for offline players.
 
@@ -184,6 +188,15 @@ sonic boom). The invisibility effect is **not** used.
 `player.hurtServer(level, damageSources().genericKill(), Float.MAX_VALUE)`. `generic_kill`
 bypasses invulnerability, totems and armour; the vanilla death message reads "<name> died", and
 the mod's own chat lines add the detail. This is the only downed → dead route besides bypass damage.
+
+**Clock pause** (0.1.3, D21): `ReviveManager.tryStart` calls `DownedManager.pauseClock` right after
+the channel is registered → `HeartStateService.pauseDowned` stores `downedUntilTick − now` (at least
+1) in `downedPausedTicks` and audits `DOWNED_PAUSED`. A break, cancel or disconnect calls
+`resumeClock` by UUID (the downed player may already be offline) → `resumeDowned` sets
+`downedUntilTick = now + downedPausedTicks`, clears the pause, audits `DOWNED_RESUMED`. A success
+clears the whole downed state as before. Two repairs cover a crash mid-channel: the join handler
+resumes a paused record when no channel exists, and `DownedManager.tick` does the same every tick.
+The boss bar reads "clock paused while being revived" and `/hc info` shows "(clock paused)".
 
 **Revive audio** (0.1.2, D20): while a channel runs, a note-block pling plays at the target every
 `Rules.REVIVE_NOTE_INTERVAL_TICKS` = 8 ticks with pitch `ReviveRules.notePitch(elapsed)`: whole
@@ -431,6 +444,12 @@ set to the `list` slot. Written with `deaths` on every state change, by player *
 - **D20 · Revive audio** (0.1.2): rising note-block scale, bass on break, chime on completion (§5).
   Pure pitch arithmetic lives in `ReviveRules` and is unit-tested; the gametest captures the
   `ClientboundSoundPacket`s on the mock connection and checks 20 non-decreasing pitches ending at 2.0.
+- **D21 · Revive channel pauses the bleed-out clock** (0.1.3). Owner report: a friend reached a
+  downed player with under 8 s left and the player bled out mid-channel. The pause is persisted as a
+  remainder (`downedPausedTicks`) rather than by moving the deadline every tick, so it costs two
+  commits per channel instead of one per tick, survives crashes, and stays idempotent (pause/resume
+  are no-ops when already in that state). Resume uses the UUID so a disconnecting downed player's
+  clock runs on world time as before.
 - **Absorption / Health Boost** stack on top of the penalty (vanilla semantics; temporary, costly,
   and blocking them would need extra mixins for marginal benefit).
 
@@ -466,6 +485,9 @@ re-acquire the target; warden `canTargetEntity` false · revive success (no deat
 health, teardown) · revive refused below 6 food · single reviver lock · revive breaks on reviver
 movement, on damage, on food 0 · bleed-out at expiry (death counted, respawn at 8 hearts) ·
 `/hc giveup` prompt is harmless, `/hc giveup confirm` kills and counts, refused when not downed ·
+a revive channel pauses a 40-tick clock past its deadline, a break resumes it and the player bleeds
+out later · a paused record resumes on join and by the tick repair · record pause/resume arithmetic
+and codec round trip incl. pre-0.1.3 files (JUnit) ·
 revive plays 20 rising notes and a chime (captured packets) · crafted Heart carries the model key ·
 join stamps pre-0.1.2 Hearts in inventory and ender chest · `ResourcePackTest` (JUnit) ties the pack
 to `HeartItem.MODEL_KEY`, format 88 and a 16×16 sprite ·

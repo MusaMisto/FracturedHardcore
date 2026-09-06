@@ -25,7 +25,10 @@ public final class JoinHandler {
 			player = RespawnService.rescueFromSpectator(player);
 		}
 
-		// 4. Resolve downed state against world time; clear stale presentation otherwise.
+		// 4. A clock paused by a revive channel that no longer exists (crash mid-revive) runs again from what was left.
+		if (rec.isDownedPaused() && !s.revive().isChanneling(player.getUUID())) rec = s.state().resumeDowned(player.getUUID(), "join");
+
+		// 5. Resolve downed state against world time; clear stale presentation otherwise.
 		if (rec.isDowned()) {
 			if (rec.downedExpired(s.state().now())) s.downed().bleedOut(player);
 			else s.downed().reenter(player, rec);
@@ -34,10 +37,10 @@ public final class JoinHandler {
 		}
 		s.downed().onViewerJoined(player);
 
-		// 5. Hearts crafted before 0.1.2 get their texture key (cosmetic, idempotent).
+		// 6. Hearts crafted before 0.1.2 get their texture key (cosmetic, idempotent).
 		HeartItem.stampAll(player);
 
-		// 6. Scoreboard.
+		// 7. Scoreboard.
 		s.state().scoreboard().sync(rec);
 	}
 }

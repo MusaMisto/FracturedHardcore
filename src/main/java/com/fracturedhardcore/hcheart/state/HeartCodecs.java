@@ -15,6 +15,7 @@ public final class HeartCodecs {
 			Codec.intRange(0, Integer.MAX_VALUE).optionalFieldOf("deaths", 0).forGetter(PlayerRecord::deaths),
 			Codec.intRange(0, Integer.MAX_VALUE).optionalFieldOf("restores_used", 0).forGetter(PlayerRecord::restoresUsed),
 			Codec.LONG.optionalFieldOf("downed_until", 0L).forGetter(PlayerRecord::downedUntilTick),
+			Codec.LONG.optionalFieldOf("downed_paused", 0L).forGetter(PlayerRecord::downedPausedTicks),
 			Codec.STRING.optionalFieldOf("name", "").forGetter(PlayerRecord::lastKnownName)
 	).apply(i, PlayerRecord::new));
 

@@ -30,4 +30,13 @@ class HeartCodecsTest {
 		tag.putInt("deaths", -2);
 		assertTrue(HeartCodecs.PLAYER_RECORD.parse(NbtOps.INSTANCE, tag).isError());
 	}
+	@Test void pausedClockRoundTripsAndOldFilesLoadUnpaused() {
+		PlayerRecord paused = new PlayerRecord(1, 0, 500L, 120L, "p");
+		Tag encoded = HeartCodecs.PLAYER_RECORD.encodeStart(NbtOps.INSTANCE, paused).getOrThrow();
+		assertEquals(paused, HeartCodecs.PLAYER_RECORD.parse(NbtOps.INSTANCE, encoded).getOrThrow());
+		CompoundTag old = new CompoundTag();
+		old.putLong("downed_until", 500L);
+		PlayerRecord loaded = HeartCodecs.PLAYER_RECORD.parse(NbtOps.INSTANCE, old).getOrThrow();
+		assertTrue(loaded.isDowned() && !loaded.isDownedPaused(), "a pre-0.1.3 file loads with the clock running");
+	}
 }

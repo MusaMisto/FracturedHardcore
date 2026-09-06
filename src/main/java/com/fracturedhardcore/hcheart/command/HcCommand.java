@@ -107,7 +107,7 @@ public final class HcCommand {
 
 	private static Component describe(Services s, String name, PlayerRecord rec) {
 		String status = rec.eliminated() ? "ELIMINATED" : rec.finalLife() ? "final life" : "alive";
-		String downed = rec.isDowned() ? " · DOWNED, " + Text.mmss(rec.downedTicksRemaining(s.state().now())) + " left" : "";
+		String downed = rec.isDowned() ? " · DOWNED, " + Text.mmss(rec.downedTicksRemaining(s.state().now())) + " left" + (rec.isDownedPaused() ? " (clock paused: being revived)" : "") : "";
 		return Text.info(name + ": deaths " + rec.deaths() + " · restores used " + rec.restoresUsed() + " · max " + rec.maxHearts()
 				+ " hearts · next Heart costs " + Messages.hearts(rec.restoreCost()) + " · " + status + downed);
 	}

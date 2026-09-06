@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundSoundPacket;
@@ -12,6 +13,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 public class ReviveGameTests {
@@ -46,6 +48,40 @@ public class ReviveGameTests {
 				helper.assertValueEqual(r.getFoodData().getFoodLevel(), 19, "reviver food drained by the sixth point");
 				helper.assertValueEqual(t.getFoodData().getFoodLevel(), 11, "target lost 6 food points");
 				helper.assertFalse(Hc.revive().isChanneling(t.getUUID()), "channel gone");
+			} finally {
+				TestPlayers.leave(t);
+				TestPlayers.leave(r);
+			}
+			helper.succeed();
+		});
+	}
+
+	@GameTest(maxTicks = 200)
+	public void reviveChannelPausesTheClockAndABreakResumesIt(GameTestHelper helper) {
+		ServerPlayer t = downedTarget(helper, "rv_t8");
+		ServerPlayer r = reviver(helper, "rv_r8");
+		Hc.state().enterDowned(t.getUUID(), Hc.state().now() + 40); // 2 s left: far less than the 8 s channel
+		helper.assertTrue(Hc.revive().tryStart(r, t).consumesAction(), "channel started");
+		helper.assertTrue(Hc.state().get(t.getUUID()).isDownedPaused(), "clock paused the moment the channel started");
+		helper.assertValueEqual(Hc.state().get(t.getUUID()).downedPausedTicks(), 40L, "with what was left on it");
+		helper.runAfterDelay(70, () -> { // the clock would have run out 30 ticks ago
+			helper.assertTrue(t.isAlive() && !t.isDeadOrDying(), "still alive while being revived");
+			helper.assertTrue(Hc.state().get(t.getUUID()).isDowned(), "still downed");
+			helper.assertValueEqual(Hc.state().get(t.getUUID()).deaths(), 0, "no death");
+			helper.setBlock(new BlockPos(1, 1, 4), Blocks.STONE);
+			Vec3 away = helper.absoluteVec(new Vec3(1, 2, 4)); // 4 blocks from the start position: breaks the channel next tick
+			r.teleportTo(helper.getLevel(), away.x, away.y, away.z, Set.of(), 0f, 0f, false);
+		});
+		helper.runAfterDelay(74, () -> {
+			helper.assertFalse(Hc.revive().isChanneling(t.getUUID()), "channel broke");
+			helper.assertFalse(Hc.state().get(t.getUUID()).isDownedPaused(), "clock resumed");
+			long left = Hc.state().get(t.getUUID()).downedTicksRemaining(Hc.state().now());
+			helper.assertTrue(left > 30 && left <= 40, "resumed from the 40 ticks that were left, got " + left);
+		});
+		helper.runAfterDelay(130, () -> {
+			try {
+				helper.assertTrue(t.isDeadOrDying(), "bled out once the resumed clock ran down");
+				helper.assertValueEqual(Hc.state().get(t.getUUID()).deaths(), 1, "death counted");
 			} finally {
 				TestPlayers.leave(t);
 				TestPlayers.leave(r);

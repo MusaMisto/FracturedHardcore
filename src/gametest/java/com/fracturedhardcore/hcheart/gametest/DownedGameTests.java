@@ -1,5 +1,6 @@
 package com.fracturedhardcore.hcheart.gametest;
 
+import com.fracturedhardcore.hcheart.core.PlayerRecord;
 import com.fracturedhardcore.hcheart.downed.DownedManager;
 import com.fracturedhardcore.hcheart.join.JoinHandler;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
@@ -140,6 +141,28 @@ public class DownedGameTests {
 			}
 			helper.succeed();
 		});
+	}
+
+	@GameTest
+	public void pausedClockResumesOnJoinAndByTheTickRepair(GameTestHelper helper) {
+		ServerPlayer p = TestPlayers.join(helper, "downed9", new Vec3(4, 2, 4));
+		try {
+			lethal(p);
+			Hc.state().enterDowned(p.getUUID(), Hc.state().now() + 200);
+			Hc.state().pauseDowned(p.getUUID(), "test");
+			helper.assertTrue(Hc.state().get(p.getUUID()).isDownedPaused(), "paused");
+			JoinHandler.onJoin(p); // relog after a crash mid-revive: no channel exists any more
+			PlayerRecord rec = Hc.state().get(p.getUUID());
+			helper.assertFalse(rec.isDownedPaused(), "resumed on join");
+			helper.assertValueEqual(rec.downedUntilTick(), Hc.state().now() + 200L, "from what was left");
+			helper.assertTrue(p.isAlive() && p.hasGlowingTag(), "still downed and alive");
+			Hc.state().pauseDowned(p.getUUID(), "test");
+			Hc.downed().tick(); // the per-tick repair catches a stale pause too
+			helper.assertFalse(Hc.state().get(p.getUUID()).isDownedPaused(), "resumed by the tick repair");
+		} finally {
+			TestPlayers.leave(p);
+		}
+		helper.succeed();
 	}
 
 	@GameTest

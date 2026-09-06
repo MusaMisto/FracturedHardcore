@@ -65,7 +65,7 @@ public final class DownedManager {
 				+ player.blockPosition().getX() + ", " + player.blockPosition().getY() + ", " + player.blockPosition().getZ();
 		server.getPlayerList().broadcastSystemMessage(
 				Text.warn(name(player) + " is downed in " + where + " — " + Text.mmss(Rules.DOWNED_DURATION_TICKS) + " to revive them."), false);
-		player.sendSystemMessage(Text.gold("You are downed. Crawl to safety — a friend can right-click you to revive you."), false);
+		player.sendSystemMessage(Text.gold("You are downed. Crawl to safety — a friend can right-click you to revive you. The clock stops while they do."), false);
 		player.sendSystemMessage(Text.info("Nobody around? ").append(Text.link("[Give up]", "/hc giveup", "Skip the clock and accept the death now"))
 				.append(Text.info(" or type /hc giveup to accept the death now.")), false);
 	}
@@ -81,6 +81,17 @@ public final class DownedManager {
 		server.getPlayerList().broadcastSystemMessage(Text.warn(name(player) + " gave up and accepted the death."), false);
 		bleedOut(player);
 		return true;
+	}
+
+	/** A revive channel started on this player: freeze the clock with what is left on it. Idempotent. */
+	public void pauseClock(UUID target, String reason) {
+		PlayerRecord rec = state.get(target);
+		if (rec.isDowned() && !rec.isDownedPaused()) state.pauseDowned(target, reason);
+	}
+
+	/** The channel ended without a revive: the clock runs again from where it stopped. Idempotent; the player may be offline. */
+	public void resumeClock(UUID target, String reason) {
+		if (state.get(target).isDownedPaused()) state.resumeDowned(target, reason);
 	}
 
 	/** Re-apply presentation from persisted state (join after crash/relog). */
@@ -121,6 +132,9 @@ public final class DownedManager {
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			PlayerRecord rec = state.get(player.getUUID());
 			if (!rec.isDowned() || player.isDeadOrDying()) continue;
+			if (rec.isDownedPaused() && (revive == null || !revive.isChanneling(player.getUUID()))) {
+				rec = state.resumeDowned(player.getUUID(), "no revive channel holds it (repair)"); // e.g. the channel died with a crash
+			}
 			if (rec.downedExpired(now)) {
 				bleedOut(player);
 				continue;
@@ -166,7 +180,8 @@ public final class DownedManager {
 
 	private void updateBar(ServerPlayer player, PlayerRecord rec, ServerBossEvent bar, long now) {
 		long remaining = rec.downedTicksRemaining(now);
-		bar.setName(Component.literal("☠ " + name(player) + " is downed · " + Text.mmss(remaining) + " · right-click to revive"));
+		String hint = rec.isDownedPaused() ? "clock paused while being revived" : "right-click to revive";
+		bar.setName(Component.literal("☠ " + name(player) + " is downed · " + Text.mmss(remaining) + " · " + hint));
 		bar.setProgress((float) remaining / (float) Rules.DOWNED_DURATION_TICKS);
 	}
 

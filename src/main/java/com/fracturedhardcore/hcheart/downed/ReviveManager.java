@@ -66,6 +66,7 @@ public final class ReviveManager {
 			return InteractionResult.FAIL;
 		}
 		byTarget.put(target.getUUID(), new Channel(reviver, target));
+		downed.pauseClock(target.getUUID(), "revive by " + name(reviver)); // persisted: a crash mid-channel keeps the time that was left
 		reviver.sendSystemMessage(Text.good("Reviving " + name(target) + "… stay within 2 blocks."), true);
 		target.sendSystemMessage(Text.good(name(reviver) + " is reviving you… hold still."), true);
 		return InteractionResult.SUCCESS;
@@ -124,6 +125,7 @@ public final class ReviveManager {
 	public void cancelTarget(UUID target) {
 		Channel ch = byTarget.remove(target);
 		if (ch == null) return;
+		downed.resumeClock(target, "channel cancelled");
 		ServerPlayer reviver = server.getPlayerList().getPlayer(ch.reviver);
 		if (reviver != null) reviver.sendSystemMessage(Text.warn("Revive interrupted: they are no longer downed."), true);
 	}
@@ -141,6 +143,7 @@ public final class ReviveManager {
 
 	private void end(Channel ch, BreakReason reason, @Nullable ServerPlayer reviver, @Nullable ServerPlayer target) {
 		byTarget.remove(ch.target);
+		downed.resumeClock(ch.target, "revive broke: " + reason); // by UUID: works even if the downed player just disconnected
 		ServerPlayer at = target != null ? target : reviver;
 		if (at != null) at.level().playSound(null, at.getX(), at.getY(), at.getZ(), SoundEvents.NOTE_BLOCK_BASS, SoundSource.PLAYERS, 0.8f, 0.5f); // low note: the scale broke
 		String why = switch (reason) {
