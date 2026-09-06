@@ -6,6 +6,7 @@ import java.util.Optional;
 import com.fracturedhardcore.hcheart.heart.HeartItem;
 import com.fracturedhardcore.hcheart.join.JoinHandler;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -38,7 +39,30 @@ public class HeartGameTests {
 		helper.assertValueEqual(recipe.get().id().identifier(), HeartItem.RECIPE_ID, "matched our recipe");
 		ItemStack result = recipe.get().value().assemble(input);
 		helper.assertTrue(HeartItem.isHeart(result), "result carries the hcheart tag");
+		helper.assertTrue(HeartItem.hasModel(result), "result carries the resource-pack model key");
 		helper.assertValueEqual(result.getCount(), 1, "one heart");
+		helper.succeed();
+	}
+
+	@GameTest
+	public void joinStampsPreTextureHeartsWithTheModelKey(GameTestHelper helper) {
+		ServerPlayer p = TestPlayers.join(helper, "heart_stamp", new Vec3(4, 2, 4));
+		try {
+			ItemStack old = HeartItem.create(2);
+			old.remove(DataComponents.CUSTOM_MODEL_DATA); // a Heart crafted before 0.1.2
+			p.getInventory().setItem(20, old);
+			p.getEnderChestInventory().setItem(3, HeartItem.create(1));
+			p.getEnderChestInventory().getItem(3).remove(DataComponents.CUSTOM_MODEL_DATA);
+			helper.assertFalse(HeartItem.hasModel(p.getInventory().getItem(20)), "starts without the key");
+			JoinHandler.onJoin(p);
+			helper.assertTrue(HeartItem.hasModel(p.getInventory().getItem(20)), "inventory Heart stamped on join");
+			helper.assertTrue(HeartItem.hasModel(p.getEnderChestInventory().getItem(3)), "ender chest Heart stamped on join");
+			helper.assertTrue(HeartItem.isHeart(p.getInventory().getItem(20)), "still a Heart");
+			helper.assertValueEqual(HeartItem.count(p), 2, "count unchanged");
+			helper.assertValueEqual(HeartItem.stampAll(p), 0, "second pass is a no-op");
+		} finally {
+			TestPlayers.leave(p);
+		}
 		helper.succeed();
 	}
 

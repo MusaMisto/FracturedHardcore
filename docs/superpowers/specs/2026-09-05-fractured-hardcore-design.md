@@ -154,7 +154,7 @@ void normalize(ServerPlayer p, PlayerRecord rec) {
 2. `setHealth(1)`; clear fire (`clearFire()`); stop using item.
 3. Glow: `setGlowingTag(true)` (entity flag, not the status effect).
 4. Movement: transient attribute modifiers `hcheart:downed_speed` (MOVEMENT_SPEED,
-   −50 % `ADD_MULTIPLIED_TOTAL`) and `hcheart:downed_jump` (JUMP_STRENGTH, −100 %). Both are
+   −75 % `ADD_MULTIPLIED_TOTAL`; −50 % before 0.1.2, see D18) and `hcheart:downed_jump` (JUMP_STRENGTH, −100 %). Both are
    client-synced attributes, so the vanilla client honours them without a mod.
 5. Pose: `setPose(SWIMMING)` now; a mixin on `Player.updatePlayerPose` (HEAD, cancellable) keeps
    the **server** pose at SWIMMING every tick so the server hitbox is 0.6 tall and never flickers.
@@ -184,6 +184,13 @@ sonic boom). The invisibility effect is **not** used.
 `player.hurtServer(level, damageSources().genericKill(), Float.MAX_VALUE)`. `generic_kill`
 bypasses invulnerability, totems and armour; the vanilla death message reads "<name> died", and
 the mod's own chat lines add the detail. This is the only downed → dead route besides bypass damage.
+
+**Revive audio** (0.1.2, D20): while a channel runs, a note-block pling plays at the target every
+`Rules.REVIVE_NOTE_INTERVAL_TICKS` = 8 ticks with pitch `ReviveRules.notePitch(elapsed)`: whole
+semitones across the note-block range 0.5–2.0 over the 160 ticks, so the scale climbs two octaves
+and the 20th note lands on completion. Completion plays an amethyst chime (1.0, pitch 1.2) plus a
+light level-up (0.6, pitch 1.5), replacing the 0.1.0 totem sound; a break plays a note-block bass
+at pitch 0.5. All are world sounds (`Level.playSound`), so bystanders hear them too.
 
 **Give up** (`/hc giveup` → `/hc giveup confirm`, v0.1.1): a downed player alone on the server
 need not wait out the clock. Step 1 (`/hc giveup`) only prints the price ("You would respawn with
@@ -289,6 +296,16 @@ star ×1 with `custom_data {hcheart: true}`, red non-italic name "Crimson Heart"
 glint override. Balance rationale (echo shards are the real price) is preserved verbatim in README.
 
 Detection: `stack.is(Items.NETHER_STAR) && customData.copyTag().getBooleanOr("hcheart", false)`.
+
+**Texture (0.1.2, D19).** The result also carries `custom_model_data {strings: ["hcheart:crimson_heart"]}`
+(`HeartItem.MODEL_KEY`). The optional client resource pack in `resourcepack/` (format 88.0, built by
+the Gradle `resourcePack` task with STORED entries and fixed timestamps, so the zip and its SHA-1 are
+reproducible) overrides `assets/minecraft/items/nether_star.json` with a `minecraft:select` on
+`minecraft:custom_model_data` index 0: the key → `hcheart:item/crimson_heart` (an `item/generated`
+model over a 16×16 sprite cut from the owner's reference `docs/assets/heart.png`, a 9×9 pixel grid
+scaled ×2), anything else → the vanilla star. Without the pack the client draws the vanilla star.
+The join handler stamps the key onto Hearts that predate 0.1.2 (inventory and ender chest);
+identity remains the custom_data tag alone. `ResourcePackTest` keeps pack and mod in step.
 
 **Sink guards** (a Heart must never silently become a plain nether star):
 - `BeaconMenu$PaymentSlot.mayPlace` → false for a Heart (the brief's beacon guard; the slot lives
@@ -403,6 +420,17 @@ set to the `list` slot. Written with `deaths` on every state change, by player *
   end the wait. Two steps so a stray click in chat cannot cost two hearts; the confirm reuses
   `bleedOut`, so there is exactly one downed → dead route and the penalty is identical. Audit event
   `GAVE_UP`. Requested by the owner after the first live session.
+- **D18 · Downed crawl speed −75 %** (0.1.2), down from the brief's −50 %: the owner found half
+  speed too fast in play. One constant (`Rules.DOWNED_SPEED_MULTIPLIER`); the gametest pins the
+  effective value at 0.025 (a quarter of the 0.1 base).
+- **D19 · Heart texture via an optional server resource pack** (0.1.2). A vanilla client cannot
+  draw a sprite it does not have, so the choice was: a `custom_model_data` key + resource pack
+  (chosen: declining the pack degrades to the vanilla star, nothing gameplay-relevant changes), or a
+  player-head item with a heart skin (rejected: 3D cube, placeable, changes the item type and every
+  guard). `item_model` was rejected because a client without the pack would render the missing model.
+- **D20 · Revive audio** (0.1.2): rising note-block scale, bass on break, chime on completion (§5).
+  Pure pitch arithmetic lives in `ReviveRules` and is unit-tested; the gametest captures the
+  `ClientboundSoundPacket`s on the mock connection and checks 20 non-decreasing pitches ending at 2.0.
 - **Absorption / Health Boost** stack on top of the penalty (vanilla semantics; temporary, costly,
   and blocking them would need extra mixins for marginal benefit).
 
@@ -438,6 +466,9 @@ re-acquire the target; warden `canTargetEntity` false · revive success (no deat
 health, teardown) · revive refused below 6 food · single reviver lock · revive breaks on reviver
 movement, on damage, on food 0 · bleed-out at expiry (death counted, respawn at 8 hearts) ·
 `/hc giveup` prompt is harmless, `/hc giveup confirm` kills and counts, refused when not downed ·
+revive plays 20 rising notes and a chime (captured packets) · crafted Heart carries the model key ·
+join stamps pre-0.1.2 Hearts in inventory and ender chest · `ResourcePackTest` (JUnit) ties the pack
+to `HeartItem.MODEL_KEY`, format 88 and a 16×16 sprite ·
 final-life lockout (deaths=3 → lethal damage kills; deaths=4 → `PERFORM_RESPAWN` yields spectator) ·
 Heart consumption and escalating cost, refusal when short, restore from final life ·
 beacon slot rejects a Heart, `Ingredient` rejects a Heart, recipe loads and yields a Heart ·
@@ -467,6 +498,8 @@ src/main/java/com/fracturedhardcore/hcheart/
 src/main/resources/fabric.mod.json, hcheart.mixins.json,
   data/hcheart/recipe/crimson_heart.json,
   data/hcheart/advancement/crafted_crimson_heart.json, data/hcheart/function/crafted.mcfunction
+resourcepack/ (0.1.2) pack.mcmeta, pack.png, assets/minecraft/items/nether_star.json,
+  assets/hcheart/models/item/crimson_heart.json, assets/hcheart/textures/item/crimson_heart.png
 src/test/java/...                      unit tests
 src/gametest/java/..., src/gametest/resources/fabric.mod.json
 scripts/backup.sh                      rolling world backup (rcon save-off/save-all/save-on)

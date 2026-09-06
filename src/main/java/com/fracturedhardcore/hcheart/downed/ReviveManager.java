@@ -96,6 +96,9 @@ public final class ReviveManager {
 				drainOne(reviver);
 				drainOne(target);
 			}
+			if (ReviveRules.playsNoteAt(ch.elapsed)) {
+				target.level().playSound(null, target.getX(), target.getY(), target.getZ(), SoundEvents.NOTE_BLOCK_PLING, SoundSource.PLAYERS, 0.8f, ReviveRules.notePitch(ch.elapsed));
+			}
 			if (ReviveRules.isComplete(ch.elapsed)) {
 				succeed(ch, reviver, target);
 				continue;
@@ -129,13 +132,17 @@ public final class ReviveManager {
 		byTarget.remove(ch.target);
 		downed.clear(target, "revived by " + name(reviver));
 		target.setHealth(target.getMaxHealth());
-		target.level().playSound(null, target.getX(), target.getY(), target.getZ(), SoundEvents.TOTEM_USE, SoundSource.PLAYERS, 0.6f, 1.0f);
+		// Completion chime: a bright amethyst ring with a light level-up sparkle on top.
+		target.level().playSound(null, target.getX(), target.getY(), target.getZ(), SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 1.0f, 1.2f);
+		target.level().playSound(null, target.getX(), target.getY(), target.getZ(), SoundEvents.PLAYER_LEVELUP, SoundSource.PLAYERS, 0.6f, 1.5f);
 		server.getPlayerList().broadcastSystemMessage(Text.good(name(reviver) + " revived " + name(target) + "!"), false);
 		state.audit().log(target.getUUID(), name(target), "REVIVED", "by " + name(reviver));
 	}
 
 	private void end(Channel ch, BreakReason reason, @Nullable ServerPlayer reviver, @Nullable ServerPlayer target) {
 		byTarget.remove(ch.target);
+		ServerPlayer at = target != null ? target : reviver;
+		if (at != null) at.level().playSound(null, at.getX(), at.getY(), at.getZ(), SoundEvents.NOTE_BLOCK_BASS, SoundSource.PLAYERS, 0.8f, 0.5f); // low note: the scale broke
 		String why = switch (reason) {
 			case REVIVER_MOVED -> "the reviver moved away.";
 			case TOO_FAR_APART -> "you are too far apart.";

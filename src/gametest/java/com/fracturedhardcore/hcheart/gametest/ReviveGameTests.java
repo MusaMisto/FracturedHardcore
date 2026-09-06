@@ -1,10 +1,15 @@
 package com.fracturedhardcore.hcheart.gametest;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.phys.Vec3;
@@ -41,6 +46,35 @@ public class ReviveGameTests {
 				helper.assertValueEqual(r.getFoodData().getFoodLevel(), 19, "reviver food drained by the sixth point");
 				helper.assertValueEqual(t.getFoodData().getFoodLevel(), 11, "target lost 6 food points");
 				helper.assertFalse(Hc.revive().isChanneling(t.getUUID()), "channel gone");
+			} finally {
+				TestPlayers.leave(t);
+				TestPlayers.leave(r);
+			}
+			helper.succeed();
+		});
+	}
+
+	@GameTest(maxTicks = 220)
+	public void reviveNotesRiseAndEndInAChime(GameTestHelper helper) {
+		ServerPlayer t = downedTarget(helper, "rv_t7");
+		ServerPlayer r = reviver(helper, "rv_r7");
+		helper.assertTrue(Hc.revive().tryStart(r, t).consumesAction(), "channel started");
+		TestPlayers.drainSent(r); // discard join and downed traffic
+		helper.runAfterDelay(170, () -> {
+			try {
+				List<Float> pitches = new ArrayList<>();
+				boolean chime = false;
+				for (Packet<?> p : TestPlayers.drainSent(r)) {
+					if (!(p instanceof ClientboundSoundPacket s)) continue;
+					if (s.getSound().value() == SoundEvents.NOTE_BLOCK_PLING.value()) pitches.add(s.getPitch());
+					if (s.getSound().value() == SoundEvents.AMETHYST_BLOCK_CHIME) chime = true;
+				}
+				helper.assertValueEqual(pitches.size(), 20, "one note every 8 ticks over the 160-tick channel");
+				for (int i = 1; i < pitches.size(); i++) helper.assertTrue(pitches.get(i) >= pitches.get(i - 1), "pitch never falls");
+				helper.assertTrue(pitches.get(0) < 0.6f, "starts near the bottom of the note-block range");
+				helper.assertValueEqual(pitches.get(19), 2.0f, "ends at the top");
+				helper.assertTrue(chime, "completion chime reached the reviver");
+				helper.assertFalse(Hc.state().get(t.getUUID()).isDowned(), "revived");
 			} finally {
 				TestPlayers.leave(t);
 				TestPlayers.leave(r);

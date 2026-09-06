@@ -12,6 +12,7 @@
 		"count": 1,
 		"components": {
 			"minecraft:custom_data": { "hcheart": true },
+			"minecraft:custom_model_data": { "strings": ["hcheart:crimson_heart"] },
 			"minecraft:custom_name": { "text": "Crimson Heart", "color": "red", "italic": false },
 			"minecraft:rarity": "epic",
 			"minecraft:enchantment_glint_override": true

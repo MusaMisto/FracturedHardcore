@@ -43,4 +43,24 @@ class ReviveRulesTest {
 	private static BreakReason check(double driftSq, double sepSq, boolean rHurt, boolean tHurt, int rFood, int tFood, boolean downed, boolean avail) {
 		return ReviveRules.check(driftSq, sepSq, rHurt, tHurt, rFood, tFood, downed, avail);
 	}
+	@Test void notesPlayEveryEightTicksAndTwentyTimes() {
+		int notes = 0;
+		for (int t = 0; t <= Rules.REVIVE_DURATION_TICKS; t++) if (ReviveRules.playsNoteAt(t)) notes++;
+		assertEquals(20, notes);
+		assertFalse(ReviveRules.playsNoteAt(0));
+		assertTrue(ReviveRules.playsNoteAt(8));
+		assertTrue(ReviveRules.playsNoteAt(Rules.REVIVE_DURATION_TICKS));
+		assertFalse(ReviveRules.playsNoteAt(Rules.REVIVE_DURATION_TICKS + 8));
+	}
+	@Test void notePitchClimbsTwoOctavesWithoutFalling() {
+		float last = 0f;
+		for (int t = 8; t <= Rules.REVIVE_DURATION_TICKS; t += 8) {
+			float p = ReviveRules.notePitch(t);
+			assertTrue(p >= 0.5f && p <= 2.0f, "note-block range");
+			assertTrue(p >= last, "never falls");
+			last = p;
+		}
+		assertEquals(2.0f, ReviveRules.notePitch(Rules.REVIVE_DURATION_TICKS), 1e-6f);
+		assertTrue(ReviveRules.notePitch(8) < 0.6f);
+	}
 }

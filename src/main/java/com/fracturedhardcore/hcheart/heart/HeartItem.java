@@ -1,5 +1,7 @@
 package com.fracturedhardcore.hcheart.heart;
 
+import java.util.List;
+
 import com.fracturedhardcore.hcheart.HcHeart;
 import com.fracturedhardcore.hcheart.HcHeartMod;
 import com.fracturedhardcore.hcheart.Services;
@@ -22,10 +24,18 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.CustomModelData;
 
-/** The Crimson Heart is a Nether Star with custom_data {hcheart: true}. Nothing is registered. */
+/**
+ * The Crimson Heart is a Nether Star with custom_data {hcheart: true}. Nothing is registered.
+ * Identity is the custom_data tag only. The custom_model_data string is cosmetic: the optional resource pack
+ * (resourcepack/) selects the heart texture by it and falls back to the vanilla star without the pack.
+ */
 public final class HeartItem {
 	public static final String TAG = "hcheart";
+	/** Must match the "when" case in resourcepack/assets/minecraft/items/nether_star.json (checked by ResourcePackTest). */
+	public static final String MODEL_KEY = "hcheart:crimson_heart";
+	private static final CustomModelData MODEL = new CustomModelData(List.of(), List.of(), List.of(MODEL_KEY), List.of());
 	public static final Identifier RECIPE_ID = HcHeart.id("crimson_heart");
 
 	private HeartItem() {}
@@ -43,7 +53,29 @@ public final class HeartItem {
 		stack.set(DataComponents.CUSTOM_NAME, Component.literal("Crimson Heart").withStyle(style -> style.withColor(ChatFormatting.RED).withItalic(false)));
 		stack.set(DataComponents.RARITY, Rarity.EPIC);
 		stack.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+		stack.set(DataComponents.CUSTOM_MODEL_DATA, MODEL);
 		return stack;
+	}
+
+	public static boolean hasModel(ItemStack stack) {
+		CustomModelData data = stack.get(DataComponents.CUSTOM_MODEL_DATA);
+		return data != null && data.strings().contains(MODEL_KEY);
+	}
+
+	/** Gives a Heart that predates the texture (0.1.2) its model key. Cosmetic; never changes identity or count. */
+	public static boolean stampModel(ItemStack stack) {
+		if (!isHeart(stack) || hasModel(stack)) return false;
+		stack.set(DataComponents.CUSTOM_MODEL_DATA, MODEL);
+		return true;
+	}
+
+	/** Stamps every Heart in the inventory and ender chest. Idempotent; run on join. Returns how many were stamped. */
+	public static int stampAll(ServerPlayer player) {
+		int n = 0;
+		Inventory inv = player.getInventory();
+		for (int i = 0; i < inv.getContainerSize(); i++) if (stampModel(inv.getItem(i))) n++;
+		for (int i = 0; i < player.getEnderChestInventory().getContainerSize(); i++) if (stampModel(player.getEnderChestInventory().getItem(i))) n++;
+		return n;
 	}
 
 	public static int count(ServerPlayer player) {

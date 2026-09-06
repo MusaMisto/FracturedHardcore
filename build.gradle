@@ -53,3 +53,17 @@ java {
 jar {
 	from("LICENSE") { rename { "${it}_${project.base.archivesName.get()}" } }
 }
+
+// Optional client resource pack (Crimson Heart texture). STORED + fixed timestamps + sorted entries = byte-identical on every machine.
+tasks.register('resourcePack', Zip) {
+	group = 'build'
+	description = 'Zips resourcepack/ into build/libs/<name>-resourcepack-<version>.zip'
+	from 'resourcepack'
+	archiveBaseName = "${project.archives_base_name}-resourcepack"
+	archiveVersion = project.version
+	destinationDirectory = layout.buildDirectory.dir('libs')
+	entryCompression = ZipEntryCompression.STORED
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
+}
+tasks.named('assemble') { dependsOn 'resourcePack' }

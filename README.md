@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/Loom-1.17-1F6FEB" alt="Fabric Loom 1.17">
   <img src="https://img.shields.io/badge/Mappings-Mojang%20official-5865F2" alt="Mojang mappings">
   <img src="https://img.shields.io/badge/Side-server--only-2EA043" alt="server-side only">
-  <img src="https://img.shields.io/badge/Tests-22%20unit%20%C2%B7%2033%20gametest-2EA043" alt="Tests: 22 unit, 33 gametest">
+  <img src="https://img.shields.io/badge/Tests-27%20unit%20%C2%B7%2035%20gametest-2EA043" alt="Tests: 27 unit, 35 gametest">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/MusaMisto/FracturedHardcore" alt="license"></a>
   <img src="https://img.shields.io/github/last-commit/MusaMisto/FracturedHardcore" alt="last commit">
 </p>
@@ -66,7 +66,7 @@ character, so the code favours **boring and verifiable** over clever.
 
 When lethal damage arrives and you are **not** on your final life, you do not die. You are **downed**:
 
-- Health is pinned at 1 HP. You lie prone (a 1-block-high hitbox), glow through walls, move at half speed, cannot jump.
+- Health is pinned at 1 HP. You lie prone (a 1-block-high hitbox), glow through walls, crawl at a quarter of normal speed, cannot jump.
 - You are **immune to all ordinary damage**. Hostile mobs drop you as a target and cannot re-acquire you. The Warden
   ignores you (its anger, sniffing and sonic boom all route through the same check).
 - You cannot attack, place, break, use items or interact with anything. Attempts get an action-bar notice.
@@ -89,7 +89,9 @@ A living player **right-clicks** the downed player and stays within **2 blocks**
   player takes damage, either player's food reaches zero, the two drift more than 4 blocks apart, the reviver dies or is
   downed, or either player disconnects. Both players are told why.
 - **One reviver per target.** A second player gets "already being revived by …".
-- On success: **zero penalty**. No death counted, no hearts lost, health refilled, a totem sound, a server-wide line.
+- You hear the channel: a note-block note every 0.4 s climbing two octaves over the 8 seconds, a low bass note if it
+  breaks, and a chime (an amethyst ring with a light level-up sparkle) when it completes. Everyone nearby hears them.
+- On success: **zero penalty**. No death counted, no hearts lost, health refilled, the chime, a server-wide line.
 
 ### Tier 2: True death
 
@@ -109,8 +111,10 @@ world-end condition.
 
 ### The Crimson Heart
 
-A Nether Star carrying `minecraft:custom_data {hcheart: true}`, named **Crimson Heart**, epic rarity, glinting. Shaped
-recipe:
+A Nether Star carrying `minecraft:custom_data {hcheart: true}`, named **Crimson Heart**, epic rarity, glinting. With the
+optional **resource pack** (Quick start, step 5) it is drawn as a crimson hardcore heart instead of a star; without it, the
+glinting star. The pack picks the model from a `custom_model_data` string the mod stamps on every Heart, so identity
+never depends on the texture. Shaped recipe:
 
 ```
 E N E      ★  Nether Star      ×1
@@ -145,6 +149,20 @@ accepted as an ingredient in **any** recipe (including the beacon recipe and the
 3. Run **`/hc reset all`** once before the first session. It wipes every record, sets everyone online to 10 hearts,
    and pulls spectators back to survival at full health.
 4. Set up backups (see [Files the mod writes](#files-the-mod-writes)). Hourly during sessions is the minimum.
+5. Optional, recommended: the **Crimson Heart texture**. Every release ships `fractured-hardcore-resourcepack-<version>.zip`.
+   The release asset URL works directly as the pack URL. Add to `server.properties` (SHA-1 is printed in the release notes;
+   the pack is built reproducibly, so `shasum -a 1` on your copy gives the same value):
+
+   ```properties
+   resource-pack=https://github.com/MusaMisto/FracturedHardcore/releases/download/v0.1.2/fractured-hardcore-resourcepack-0.1.2.zip
+   resource-pack-sha1=1223e50c22fd2ca07e44f9c48c13ef697c86ca2d
+   resource-pack-prompt={"text":"Fractured Hardcore: draws the Crimson Heart as a heart. Optional."}
+   require-resource-pack=false
+   ```
+
+   Players who accept see the heart; players who decline see the vanilla star. Nothing in the game depends on it. Hearts
+   crafted before 0.1.2 get the texture the next time their owner logs in (inventory and ender chest); a Heart sitting in
+   a chest gets it once someone logs in carrying it. Use the zip from the same release as the jar.
 
 Existing worlds are repaired automatically on each player's next login. The join handler resets the max-health **base
 value** to 20 (undoing any earlier `/attribute … base set`), reapplies the correct penalty from stored state, returns
@@ -199,7 +217,8 @@ JDK 25 is not the macOS default. On the author's machine it is `brew install ope
 
 ```bash
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build            # compile + unit tests + headless gametest server; the jar lands in build/libs/
+./gradlew build            # compile + unit tests + headless gametest server; jar and resource-pack zip land in build/libs/
+./gradlew resourcePack     # just the resource-pack zip (STORED, fixed timestamps: byte-identical everywhere)
 ./gradlew test             # unit tests only (fast)
 ./gradlew runGameTest      # gametests only; log in build/run/gameTest/logs/latest.log
 ./gradlew runServer        # a dev dedicated server with the mod (accept the EULA in run/ first)
@@ -208,7 +227,7 @@ export JAVA_HOME=/path/to/jdk-25
 
 `build` is green only when all three stages pass. The gametest stage prints `All N required tests passed :)`. CI runs the
 same command on every push and pull request ([`.github/workflows/build.yml`](.github/workflows/build.yml)) and uploads
-the jar as an artifact.
+the jar and the resource-pack zip as one artifact.
 
 ### Project layout
 
@@ -241,20 +260,21 @@ the jar as an artifact.
 │   │   ├── DeathEvents.java      AFTER_DEATH (count) and AFTER_RESPAWN (apply cap, sounds, messages, bar viewers)
 │   │   ├── Messages.java         every player-facing string
 │   │   └── Sounds.java           play a sound to one player
-│   ├── heart/HeartItem.java        detection, creation, counting/removal, UseItemCallback consume handler
+│   ├── heart/HeartItem.java        detection, creation, model-key stamping, counting/removal, UseItemCallback consume handler
 │   ├── command/HcCommand.java      /hc tree and applyLive
 │   ├── scoreboard/ScoreboardService.java  deaths_hc objective
 │   └── mixin/                    five small mixins (see Vanilla touchpoints)
 ├── src/main/resources/
 │   ├── fabric.mod.json, hcheart.mixins.json, assets/hcheart/icon.png
 │   └── data/hcheart/             recipe/crimson_heart.json, advancement/crafted_crimson_heart.json, function/crafted.mcfunction
-├── src/test/java/…               JUnit: PlayerRecordTest, DeathRulesTest, ReviveRulesTest, HeartCodecsTest
+├── src/test/java/…               JUnit: PlayerRecordTest, DeathRulesTest, ReviveRulesTest, HeartCodecsTest, ResourcePackTest
 ├── src/gametest/                 gametest source set (own mod id hcheart-gametest)
 │   ├── java/…/gametest/          TestPlayers (harness), Hc (service access), 6 test classes
 │   └── resources/                fabric.mod.json (entrypoints), test_environment/isolated.json
+├── resourcepack/                 optional client pack: pack.mcmeta (format 88), items/nether_star.json select, heart model, 16×16 sprite
 ├── docs/superpowers/specs/       design spec with every decision and deviation from the original brief
 ├── docs/superpowers/plans/       the implementation plan the code was built from
-├── docs/assets/                  logo
+├── docs/assets/                  logo, heart.png (the sprite reference)
 ├── scripts/backup.sh             rolling rcon backup
 └── .github/workflows/build.yml   CI
 ```
@@ -325,13 +345,13 @@ stateDiagram-v2
 **Join** (`JoinHandler.onJoin`, `ServerPlayerEvents.JOIN`, fires at `PlayerList.placeNewPlayer` RETURN):
 `getOrCreate` record and refresh name → `HealthService.normalize` (base 20, penalty modifier, clamp) → rescue from
 spectator unless eliminated → downed: expired ? `bleedOut` : `reenter`; not downed: `clearPresentation` → add the player
-to existing boss bars → scoreboard sync.
+to existing boss bars → stamp any pre-0.1.2 Heart with the model key → scoreboard sync.
 
 **Lethal damage** (`DownedEvents`, `ServerLivingEntityEvents.ALLOW_DEATH`): Fabric redirects the *second*
 `isDeadOrDying()` in `LivingEntity.hurtServer`, i.e. before the totem check and `die()`. Health is already ≤ 0 here.
 `DeathRules.onLethalDamage(record, source.is(BYPASSES_INVULNERABILITY))` returns `TRUE_DEATH` (bypass, already downed,
 or final life) → we return `true` and vanilla continues (totem check, then `die()`), or `ENTER_DOWNED` → `DownedManager.enter`
-persists `downedUntilTick = overworld game time + 3600` **first**, then sets health to 1, glow, prone pose, speed −50 %
+persists `downedUntilTick = overworld game time + 3600` **first**, then sets health to 1, glow, prone pose, speed −75 %
 and jump −100 % transient modifiers, clears mob targets and Warden anger within 48 blocks, creates the boss bar, broadcasts.
 
 **While downed** (`DownedManager.tick`, `END_SERVER_TICK`): bleed out when expired; otherwise pin health at 1, reassert glow
@@ -342,8 +362,9 @@ downed, audit `GAVE_UP`, broadcast, `bleedOut`. Commands are not covered by the 
 
 **Revive** (`ReviveEvents` → `ReviveManager.tryStart`, then `ReviveManager.tick`): a `Channel` records reviver, target,
 start position, elapsed ticks and last `hurtTime` of both. Each tick: compute `ReviveRules.check(...)`; on a break reason,
-end and notify; else `elapsed++`, drain one point from each player at ticks 27/53/80/107/133/160, show progress every 4
-ticks, and at 160 → `DownedManager.clear`, refill health, sound, broadcast, audit `REVIVED`.
+end and notify (plus a low bass note); else `elapsed++`, drain one point from each player at ticks 27/53/80/107/133/160,
+show progress every 4 ticks, play a note-block note every 8 ticks (`ReviveRules.notePitch`: whole semitones from 0.5 to
+2.0), and at 160 → `DownedManager.clear`, refill health, chime, broadcast, audit `REVIVED`.
 
 **True death** (`DeathEvents`): `AFTER_DEATH` fires at `ServerPlayer.die` TAIL, so the death is committed and a totem save
 never reaches it → `DownedManager.clear` → `recordDeath` (deaths+1, downed cleared) → line and quiet bell to everyone else.
@@ -377,7 +398,8 @@ Everything the mod depends on in Minecraft or Fabric API, so an upgrade can be c
 | Mixin | `Ingredient.test(ItemStack)` HEAD, cancellable | Hearts are never a recipe ingredient |
 | API | `SavedDataType`, `MinecraftServer.getDataStorage().computeIfAbsent/saveAndJoin`, `DataFixTypes.SAVED_DATA_COMMAND_STORAGE` (opaque type, never rewritten by fixers) | persistence |
 | API | `AttributeInstance.setBaseValue/addTransientModifier/removeModifier(Identifier)`, `Attributes.MAX_HEALTH/MOVEMENT_SPEED/JUMP_STRENGTH` | health cap, downed movement |
-| API | `ServerBossEvent`, `ServerPlayer.sendSystemMessage(Component, overlay)`, `ClientboundSoundPacket`, `ClientboundSetTitleTextPacket` | UI |
+| API | `ServerBossEvent`, `ServerPlayer.sendSystemMessage(Component, overlay)`, `ClientboundSoundPacket`, `ClientboundSetTitleTextPacket`, `Level.playSound` | UI, revive sounds |
+| API | `DataComponents.CUSTOM_MODEL_DATA` (`strings[0]` = `hcheart:crimson_heart`) | texture selection by the optional resource pack; identity stays `CUSTOM_DATA` |
 | API | `ServerPlayer.findRespawnPositionAndUseSpawnBlock`, `teleport(TeleportTransition)`, `setGameMode` | spectator rescue |
 | API | `GameProfileArgument` / `NameAndId`, `Commands.hasPermission(PermissionCheck)`, `Permissions.COMMANDS_GAMEMASTER` | commands |
 | Data | `data/hcheart/recipe/crimson_heart.json` (`crafting_shaped`, component result), advancement `recipe_crafted` + reward function | recipe, craft broadcast |
@@ -417,6 +439,8 @@ boolean isDowned()    = downedUntilTick > 0           // absolute overworld game
    (`HcHeartMod.onInitialize` order: `DownedEvents`, `ReviveEvents`, `HeartItem`, `HcCommand`, `DeathEvents`).
 9. **Every handler tolerates `services() == null`** (before `SERVER_STARTING`, after `SERVER_STOPPED`) by deferring to vanilla.
 10. **Every behaviour change ships with a test** and a matching README update.
+11. **A Heart is identified by `custom_data {hcheart: true}` only.** The name, glint and model key are cosmetic and may be
+    missing on old items; `HeartItem.isHeart` must never look at them.
 
 ### Tuning constants
 
@@ -430,25 +454,27 @@ All in `core/Rules.java`. Changing them changes unit-test expectations too.
 | `REVIVE_DURATION_TICKS` | 160 (8 s) | channel length |
 | `REVIVE_MIN_FOOD` / `REVIVE_FOOD_COST` | 6 / 6 | entry requirement / points drained from each player |
 | `REVIVE_MAX_REVIVER_DRIFT` / `REVIVE_MAX_SEPARATION` | 2.0 / 4.0 blocks | break conditions |
-| `DOWNED_SPEED_MULTIPLIER` / `DOWNED_JUMP_MULTIPLIER` | −0.5 / −1.0 (`ADD_MULTIPLIED_TOTAL`) | half speed, no jump |
+| `DOWNED_SPEED_MULTIPLIER` / `DOWNED_JUMP_MULTIPLIER` | −0.75 / −1.0 (`ADD_MULTIPLIED_TOTAL`) | quarter speed (was half until 0.1.2), no jump |
 | `HEART_USE_COOLDOWN_TICKS` | 20 | duplicate-packet guard |
+| `REVIVE_NOTE_INTERVAL_TICKS` | 8 | one rising note per 8 ticks, 20 over the channel |
 
 ### Testing
 
-**Unit tests** (`src/test/java`, JUnit 5, no server): the whole `core` package plus the codec round-trip. Run with
+**Unit tests** (`src/test/java`, JUnit 5, no server): the whole `core` package, the codec round-trip, and `ResourcePackTest`
+(the pack under `resourcepack/` uses format 88, selects on `HeartItem.MODEL_KEY`, and ships a 16×16 sprite). Run with
 `./gradlew test`. They are the specification of the rules; if you change a rule, change the test first.
 
 **Gametests** (`src/gametest`, `fabric-gametest-api-v1`): a headless `GameTestServer` boots with the mod and runs every
 `@GameTest` method listed in `src/gametest/resources/fabric.mod.json`. They exercise the real event chain, mixins,
-datapack and commands. Six classes, 33 tests:
+datapack and commands. Six classes, 35 tests:
 
 | Class | Covers |
 |---|---|
 | `JoinGameTests` | base-value repair, penalty application, spectator rescue, eliminated players stay spectator |
 | `DownedGameTests` | downed entry, immunity, bypass kills, zombie loses/cannot reacquire target, Warden ignores, bleed-out, 1-block-gap hitbox, relog recovery |
-| `ReviveGameTests` | success with exact hunger drain, hungry reviver refused, single-reviver lock, breaks on move / damage / starvation |
+| `ReviveGameTests` | success with exact hunger drain, hungry reviver refused, single-reviver lock, breaks on move / damage / starvation, 20 rising notes and the chime reach the reviver (packet capture) |
 | `DeathGameTests` | cap after respawn, Respawn keeps survival until elimination, elimination → spectator, totem only on final life |
-| `HeartGameTests` | recipe loads and crafts, Hearts never an ingredient, beacon slot guard, escalating cost, refusals, lifting final life |
+| `HeartGameTests` | recipe loads and crafts (with the model key), join stamps pre-0.1.2 Hearts, Hearts never an ingredient, beacon slot guard, escalating cost, refusals, lifting final life |
 | `CommandGameTests` | `/hc set`, `/hc reset all` (isolated batch), `/hc give`, `/hc info`, `/hc giveup` (prompt alone is harmless, confirm kills and counts, refused when not downed) |
 
 Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
@@ -463,6 +489,8 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
   `@GameTest(environment = "hcheart-gametest:isolated")`, defined in `src/gametest/resources/data/hcheart-gametest/test_environment/isolated.json`.
 - Always `TestPlayers.leave(player)` in a `finally` block; use `helper.runAfterDelay` for anything that needs ticks, and
   raise `maxTicks` accordingly.
+- `TestPlayers.drainSent(player)` returns every packet the server wrote to that mock client since the last drain (the
+  `EmbeddedChannel` has no encoder, so you get raw packet objects). Use it to assert sounds, titles or messages.
 - To add a test class, register it under `fabric-gametest` in the gametest `fabric.mod.json`.
 
 ### Upgrading Minecraft or Fabric
@@ -474,8 +502,11 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
    sources: mixin method names and descriptors, the hardcore checks in `PlayerList.placeNewPlayer` and
    `ServerGamePacketListenerImpl.handleClientCommand`, `Player.canBeSeenAsEnemy`, `Warden.canTargetEntity`, the
    `SavedDataType` constructor, and where Fabric injects `ALLOW_DEATH`/`AFTER_DEATH`/`AFTER_RESPAWN`.
-4. `./gradlew build`. Mixin failures show up at gametest boot; behaviour drift shows up as test failures.
-5. Update the badges, the toolchain table and this section.
+4. Bump the resource pack: `min_format`/`max_format` in `resourcepack/pack.mcmeta` to the new `pack_version.resource_major`
+   (from `version.json` inside the client jar) and the matching assertion in `ResourcePackTest`; confirm the `minecraft:select`
+   item-model property `minecraft:custom_model_data` still exists.
+5. `./gradlew build`. Mixin failures show up at gametest boot; behaviour drift shows up as test failures.
+6. Update the badges, the toolchain table and this section.
 
 ### Troubleshooting
 
@@ -487,6 +518,8 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 | Gametests fail with `was 20.0` after lethal damage | The mock client was not marked loaded; use `TestPlayers.join`. |
 | Timing-based gametests fail randomly | A concurrently running test mutated global state; isolate it with the `isolated` environment. |
 | Recipe missing in game | Server log at datapack load: search for `hcheart`. The gametest `recipeLoadsAndCraftsAHeart` guards this. |
+| Heart shows as a star for one player | They declined the pack, or the server has no `resource-pack` line, or `resource-pack-sha1` does not match the zip (`shasum -a 1`); on a mismatch the client discards the download. |
+| Heart shows as a purple-and-black box | The pack and the jar are from different releases; use the zip shipped with the jar. |
 | `Failed to parse saved data for 'SavedDataType[hcheart:players]'` | The file is damaged; vanilla starts fresh. Restore `players.dat` from backup or rebuild records from the audit log with `/hc set`. |
 
 ### Known limitations
@@ -497,6 +530,8 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
   eliminated player becomes a spectator. No vanilla packet separates the two, and the flag cannot change without a reconnect.
 - A downed player's **own camera** stays at standing height in open areas because the vanilla client computes its own pose;
   everyone else sees them prone, the server hitbox is prone, and in a 1-block gap the client crawls too.
+- The heart texture needs the optional resource pack; a client without it sees the glinting star. A Heart left in a chest
+  keeps the old look until a player carrying it logs in.
 - Absorption and Health Boost stack on top of the reduced cap, as in vanilla.
 - Totems of Undying are only consumed on the final life; before that, being downed takes precedence.
 

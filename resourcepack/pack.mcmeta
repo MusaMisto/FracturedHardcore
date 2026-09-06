@@ -1,0 +1,10 @@
+{
+	"pack": {
+		"description": "Fractured Hardcore: Crimson Heart texture (optional)",
+		"min_format": [
+			88,
+			0
+		],
+		"max_format": 88
+	}
+}

@@ -42,4 +42,15 @@ public final class ReviveRules {
 		if (separationSq > Rules.REVIVE_MAX_SEPARATION * Rules.REVIVE_MAX_SEPARATION) return BreakReason.TOO_FAR_APART;
 		return BreakReason.NONE;
 	}
+
+	/** Rising note-block scale while the channel runs: one note every {@link Rules#REVIVE_NOTE_INTERVAL_TICKS} ticks, the last one on completion. */
+	public static boolean playsNoteAt(int elapsed) {
+		return elapsed > 0 && elapsed <= Rules.REVIVE_DURATION_TICKS && elapsed % Rules.REVIVE_NOTE_INTERVAL_TICKS == 0;
+	}
+
+	/** Pitch of the note at {@code elapsed}: whole semitones across the note-block range (0.5 to 2.0, two octaves) over the channel. */
+	public static float notePitch(int elapsed) {
+		int semitone = Math.round(24f * elapsed / Rules.REVIVE_DURATION_TICKS);
+		return (float) Math.pow(2.0, (semitone - 12) / 12.0);
+	}
 }

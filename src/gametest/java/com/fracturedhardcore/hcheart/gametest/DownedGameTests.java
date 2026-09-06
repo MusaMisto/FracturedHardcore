@@ -30,6 +30,7 @@ public class DownedGameTests {
 			helper.assertTrue(p.hasGlowingTag(), "glowing");
 			helper.assertValueEqual(p.getPose(), Pose.SWIMMING, "prone");
 			helper.assertTrue(p.getAttribute(Attributes.MOVEMENT_SPEED).hasModifier(DownedManager.SPEED_ID), "slowed");
+			helper.assertTrue(Math.abs(p.getAttributeValue(Attributes.MOVEMENT_SPEED) - 0.1 * 0.25) < 1e-9, "quarter of the 0.1 base speed");
 			helper.assertTrue(p.getAttribute(Attributes.JUMP_STRENGTH).hasModifier(DownedManager.JUMP_ID), "no jump");
 			helper.assertValueEqual(Hc.state().get(p.getUUID()).deaths(), 0, "no death counted");
 		} finally {

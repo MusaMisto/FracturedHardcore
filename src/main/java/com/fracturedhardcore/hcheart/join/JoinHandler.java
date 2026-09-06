@@ -5,6 +5,7 @@ import com.fracturedhardcore.hcheart.Services;
 import com.fracturedhardcore.hcheart.core.DeathRules;
 import com.fracturedhardcore.hcheart.core.PlayerRecord;
 import com.fracturedhardcore.hcheart.health.HealthService;
+import com.fracturedhardcore.hcheart.heart.HeartItem;
 import net.minecraft.server.level.ServerPlayer;
 
 /** Runs on every join. Everything else in the mod assumes this has run. */
@@ -33,7 +34,10 @@ public final class JoinHandler {
 		}
 		s.downed().onViewerJoined(player);
 
-		// 5. Scoreboard.
+		// 5. Hearts crafted before 0.1.2 get their texture key (cosmetic, idempotent).
+		HeartItem.stampAll(player);
+
+		// 6. Scoreboard.
 		s.state().scoreboard().sync(rec);
 	}
 }

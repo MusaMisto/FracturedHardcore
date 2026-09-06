@@ -1,5 +1,9 @@
 package com.fracturedhardcore.hcheart.gametest;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -7,6 +11,7 @@ import com.mojang.authlib.GameProfile;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket;
 import net.minecraft.server.MinecraftServer;
@@ -21,6 +26,8 @@ import net.minecraft.world.phys.Vec3;
 
 /** Real ServerPlayers with a dead-end connection, placed through PlayerList.placeNewPlayer so the mod's JOIN handler runs. */
 final class TestPlayers {
+	private static final Map<UUID, EmbeddedChannel> channels = new HashMap<>();
+
 	private TestPlayers() {}
 
 	static ServerPlayer join(GameTestHelper helper, String name, Vec3 relativePos) {
@@ -32,7 +39,7 @@ final class TestPlayers {
 			public boolean isClientAuthoritative() { return false; }
 		};
 		Connection connection = new Connection(PacketFlow.SERVERBOUND);
-		new EmbeddedChannel(connection);
+		channels.put(profile.id(), new EmbeddedChannel(connection));
 		server.getPlayerList().placeNewPlayer(connection, player, cookie);
 		markClientLoaded(player);
 		player.setGameMode(GameType.SURVIVAL);
@@ -57,7 +64,18 @@ final class TestPlayers {
 		player.connection.handleAcceptPlayerLoad(new ServerboundPlayerLoadedPacket());
 	}
 
+	/** Packets the server wrote to this mock client since the last drain. The channel has no encoder, so these are the raw packet objects. */
+	static List<Packet<?>> drainSent(ServerPlayer player) {
+		List<Packet<?>> out = new ArrayList<>();
+		EmbeddedChannel ch = channels.get(player.getUUID());
+		if (ch == null) return out;
+		Object o;
+		while ((o = ch.readOutbound()) != null) if (o instanceof Packet<?> p) out.add(p);
+		return out;
+	}
+
 	static void leave(ServerPlayer player) {
+		channels.remove(player.getUUID());
 		MinecraftServer server = player.level().getServer();
 		if (server.getPlayerList().getPlayer(player.getUUID()) != null) {
 			server.getPlayerList().remove(player);
