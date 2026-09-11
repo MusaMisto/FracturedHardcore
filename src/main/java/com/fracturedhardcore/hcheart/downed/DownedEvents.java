@@ -10,8 +10,10 @@ import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 
@@ -25,8 +27,8 @@ public final class DownedEvents {
 			if (s == null || !(entity instanceof ServerPlayer player)) return true;
 			PlayerRecord rec = s.state().get(player.getUUID());
 			boolean bypass = source.is(DamageTypeTags.BYPASSES_INVULNERABILITY);
-			return switch (DeathRules.onLethalDamage(rec, bypass)) {
-				case TRUE_DEATH -> true;
+			return switch (DeathRules.onLethalDamage(rec, bypass, holdsDeathProtection(player))) {
+				case TRUE_DEATH, TOTEM -> true; // vanilla continues: checkTotemDeathProtection, then die() only if nothing fired
 				case ENTER_DOWNED -> {
 					s.downed().enter(player); // sets health to 1; the entity would otherwise die next tick
 					yield false;
@@ -44,6 +46,14 @@ public final class DownedEvents {
 		AttackEntityCallback.EVENT.register((player, level, hand, entity, hit) -> lock(player));
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> lock(player));
 		UseItemCallback.EVENT.register((player, level, hand) -> lock(player));
+	}
+
+	/** Mirrors the item test in LivingEntity.checkTotemDeathProtection: any item with the death_protection component, either hand. */
+	static boolean holdsDeathProtection(Player player) {
+		for (InteractionHand hand : InteractionHand.values()) {
+			if (player.getItemInHand(hand).has(DataComponents.DEATH_PROTECTION)) return true;
+		}
+		return false;
 	}
 
 	private static InteractionResult lock(Player player) {

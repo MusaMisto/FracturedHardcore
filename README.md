@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/Loom-1.17-1F6FEB" alt="Fabric Loom 1.17">
   <img src="https://img.shields.io/badge/Mappings-Mojang%20official-5865F2" alt="Mojang mappings">
   <img src="https://img.shields.io/badge/Side-server--only-2EA043" alt="server-side only">
-  <img src="https://img.shields.io/badge/Tests-35%20unit%20%C2%B7%2041%20gametest-2EA043" alt="Tests: 35 unit, 41 gametest">
+  <img src="https://img.shields.io/badge/Tests-36%20unit%20%C2%B7%2043%20gametest-2EA043" alt="Tests: 36 unit, 43 gametest">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/MusaMisto/FracturedHardcore" alt="license"></a>
   <img src="https://img.shields.io/github/last-commit/MusaMisto/FracturedHardcore" alt="last commit">
 </p>
@@ -69,6 +69,8 @@ When lethal damage arrives and you are **not** on your final life, you do not di
 - Health is pinned at 1 HP. You lie prone (a 1-block-high hitbox), glow through walls, crawl at a quarter of normal speed, cannot jump.
 - You are **immune to all ordinary damage**. Hostile mobs drop you as a target and cannot re-acquire you. The Warden
   ignores you (its anger, sniffing and sonic boom all route through the same check).
+- **A Totem of Undying in either hand fires first**, exactly as in vanilla: it is consumed, you keep your feet at 1 HP
+  with the usual effects, and you are neither downed nor charged a death. You are only downed when you hold no totem.
 - You cannot attack, place, break, use items or interact with anything. Attempts get an action-bar notice.
 - A red boss bar, visible to everyone online, shows who is downed and the time left: **180 seconds of real time**. Logging
   out, an empty server or a server restart do not stop it. When it runs out you **bleed out** and die for real, **online or
@@ -112,7 +114,7 @@ your final life. The tab list shows everyone's death count.
 ### Tier 3: Final life and elimination
 
 At three deaths you sit at **4 hearts permanently**. The downed safety net is gone: lethal damage kills you. A held Totem
-of Undying still works as in vanilla, which makes totems final-life insurance. The **fourth death ends your run**: you
+of Undying still works as in vanilla, on this life as on every other. The **fourth death ends your run**: you
 respawn as a spectator (stock hardcore behaviour), everyone is told, and the world continues for the others. There is no
 world-end condition.
 
@@ -161,7 +163,7 @@ accepted as an ingredient in **any** recipe (including the beacon recipe and the
    the pack is built reproducibly, so `shasum -a 1` on your copy gives the same value):
 
    ```properties
-   resource-pack=https://github.com/MusaMisto/FracturedHardcore/releases/download/v0.1.4/fractured-hardcore-resourcepack-0.1.4.zip
+   resource-pack=https://github.com/MusaMisto/FracturedHardcore/releases/download/v0.1.5/fractured-hardcore-resourcepack-0.1.5.zip
    resource-pack-sha1=1223e50c22fd2ca07e44f9c48c13ef697c86ca2d
    resource-pack-prompt={"text":"Fractured Hardcore: draws the Crimson Heart as a heart. Optional."}
    require-resource-pack=false
@@ -359,7 +361,9 @@ player to existing boss bars → stamp any pre-0.1.2 Heart with the model key �
 **Lethal damage** (`DownedEvents`, `ServerLivingEntityEvents.ALLOW_DEATH`): Fabric redirects the *second*
 `isDeadOrDying()` in `LivingEntity.hurtServer`, i.e. before the totem check and `die()`. Health is already ≤ 0 here.
 `DeathRules.onLethalDamage(record, source.is(BYPASSES_INVULNERABILITY))` returns `TRUE_DEATH` (owed kill pending, bypass, already
-downed, or final life) → we return `true` and vanilla continues (totem check, then `die()`), or `ENTER_DOWNED` → `DownedManager.enter`
+downed, or final life) or `TOTEM` (a `death_protection` item in either hand and non-bypass damage: vanilla's totem check
+will fire) → we return `true` and vanilla continues (totem check, then `die()` only if nothing fired), or `ENTER_DOWNED` →
+`DownedManager.enter`
 persists `downedUntilMs = wall-clock now + 180 000` **first**, then sets health to 1, glow, prone pose, speed −75 %
 and jump −100 % transient modifiers, clears mob targets and Warden anger within 48 blocks, creates the boss bar, broadcasts.
 
@@ -502,14 +506,14 @@ All in `core/Rules.java`. Changing them changes unit-test expectations too.
 
 **Gametests** (`src/gametest`, `fabric-gametest-api-v1`): a headless `GameTestServer` boots with the mod and runs every
 `@GameTest` method listed in `src/gametest/resources/fabric.mod.json`. They exercise the real event chain, mixins,
-datapack and commands. Six classes, 41 tests:
+datapack and commands. Six classes, 43 tests:
 
 | Class | Covers |
 |---|---|
 | `JoinGameTests` | base-value repair, penalty application, spectator rescue, eliminated players stay spectator |
 | `DownedGameTests` | downed entry, immunity, bypass kills, zombie loses/cannot reacquire target, Warden ignores, bleed-out, 1-block-gap hitbox, relog recovery, paused clock resumes on join and by the tick repair, an expired clock at join before the client loads is not a free revive (kill lands once loaded, counted once), an offline expiry counts the death, keeps the bar counting and settles the owed kill on rejoin (own batch), 0.1.3 tick clocks convert exactly / owe the death / resume a paused remainder |
 | `ReviveGameTests` | success with exact hunger drain, hungry reviver refused, single-reviver lock, breaks on move / damage / starvation, 20 rising notes and the chime reach the reviver (packet capture), a channel pauses the clock and a break resumes it with the time that was left (the player still bleeds out later) |
-| `DeathGameTests` | cap after respawn, Respawn keeps survival until elimination, elimination → spectator, totem only on final life |
+| `DeathGameTests` | cap after respawn, Respawn keeps survival until elimination, elimination → spectator, a held totem fires instead of downed (offhand, main hand, any life), totem still works on final life, bypass damage ignores the totem and counts |
 | `HeartGameTests` | recipe loads and crafts (with the model key), join stamps pre-0.1.2 Hearts, Hearts never an ingredient, beacon slot guard, escalating cost, refusals, lifting final life |
 | `CommandGameTests` | `/hc set`, `/hc reset all` (isolated batch), `/hc give`, `/hc info`, `/hc giveup` (prompt alone is harmless, confirm kills and counts, refused when not downed, refused without any announcement while the client is unloaded) |
 
@@ -582,7 +586,6 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 - The heart texture needs the optional resource pack; a client without it sees the glinting star. A Heart left in a chest
   keeps the old look until a player carrying it logs in.
 - Absorption and Health Boost stack on top of the reduced cap, as in vanilla.
-- Totems of Undying are only consumed on the final life; before that, being downed takes precedence.
 
 ### Documentation map and README maintenance
 

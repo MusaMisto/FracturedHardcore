@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.stats.Stats;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -93,14 +94,55 @@ public class DeathGameTests {
 		helper.succeed();
 	}
 
+	/** Live-play report (0.1.4): a player with a totem in the offhand was downed instead of the totem firing. Vanilla must win. */
 	@GameTest
-	public void totemIsNotConsumedBeforeFinalLife(GameTestHelper helper) {
+	public void totemInOffhandFiresInsteadOfDowned(GameTestHelper helper) {
 		ServerPlayer p = TestPlayers.join(helper, "death5", new Vec3(4, 2, 4));
 		try {
 			p.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
 			p.hurtServer(p.level(), p.level().damageSources().generic(), 1000f);
-			helper.assertTrue(Hc.state().get(p.getUUID()).isDowned(), "downed takes precedence");
-			helper.assertTrue(p.getOffhandItem().is(Items.TOTEM_OF_UNDYING), "totem kept");
+			helper.assertTrue(p.isAlive() && !p.isDeadOrDying(), "totem saved the player");
+			helper.assertTrue(p.getOffhandItem().isEmpty(), "totem consumed, as in vanilla");
+			helper.assertFalse(Hc.state().get(p.getUUID()).isDowned(), "never downed");
+			helper.assertFalse(p.hasGlowingTag(), "no downed presentation");
+			helper.assertValueEqual(Hc.state().get(p.getUUID()).deaths(), 0, "no death counted");
+			helper.assertTrue(p.getHealth() > 0f, "alive at vanilla totem health");
+			helper.assertValueEqual(p.getStats().getValue(Stats.ITEM_USED.get(Items.TOTEM_OF_UNDYING)), 1, "vanilla recorded the totem use");
+		} finally {
+			TestPlayers.leave(p);
+		}
+		helper.succeed();
+	}
+
+	@GameTest
+	public void totemInMainHandFiresInsteadOfDowned(GameTestHelper helper) {
+		ServerPlayer p = TestPlayers.join(helper, "death6", new Vec3(4, 2, 4));
+		try {
+			Hc.state().set(p.getUUID(), 2, 0, "test"); // one death from final life: still not final, still a totem first
+			JoinHandler.onJoin(p);
+			p.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+			p.hurtServer(p.level(), p.level().damageSources().generic(), 1000f);
+			helper.assertTrue(p.isAlive() && p.getMainHandItem().isEmpty(), "main-hand totem consumed");
+			helper.assertFalse(Hc.state().get(p.getUUID()).isDowned(), "never downed");
+			helper.assertValueEqual(Hc.state().get(p.getUUID()).deaths(), 2, "no death counted");
+			// No totem left. Vanilla ignores a hit that is not bigger than the last one for 10 ticks (damage cooldown), so hit harder.
+			p.hurtServer(p.level(), p.level().damageSources().generic(), 2000f);
+			helper.assertTrue(Hc.state().get(p.getUUID()).isDowned(), "without a totem the next lethal hit downs them");
+		} finally {
+			TestPlayers.leave(p);
+		}
+		helper.succeed();
+	}
+
+	@GameTest
+	public void totemDoesNotSaveFromBypassDamageAndTheDeathCounts(GameTestHelper helper) {
+		ServerPlayer p = TestPlayers.join(helper, "death7", new Vec3(4, 2, 4));
+		try {
+			p.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+			p.hurtServer(p.level(), p.level().damageSources().genericKill(), Float.MAX_VALUE); // /kill, void: vanilla ignores totems
+			helper.assertTrue(p.isDeadOrDying(), "dead");
+			helper.assertValueEqual(Hc.state().get(p.getUUID()).deaths(), 1, "true death counted");
+			helper.assertValueEqual(p.getStats().getValue(Stats.ITEM_USED.get(Items.TOTEM_OF_UNDYING)), 0, "totem not used, as in vanilla (the inventory drops on death)");
 		} finally {
 			TestPlayers.leave(p);
 		}

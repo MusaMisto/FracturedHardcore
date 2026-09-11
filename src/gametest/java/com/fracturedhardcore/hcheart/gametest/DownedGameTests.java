@@ -6,6 +6,7 @@ import com.fracturedhardcore.hcheart.join.JoinHandler;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.protocol.game.ClientboundBossEventPacket;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
@@ -221,6 +222,7 @@ public class DownedGameTests {
 			helper.assertTrue(Hc.state().get(id).isDowned(), "downed");
 			helper.assertTrue(String.valueOf(Hc.downed().barName(id)).contains("3:00"), "bar starts at 3:00");
 			TestPlayers.leave(d); // disconnects while downed
+			TestPlayers.drainSent(viewer);
 			offset[0] = 30_000L; // half a minute passes with them offline
 		} catch (RuntimeException | AssertionError e) {
 			restore.run();
@@ -231,7 +233,8 @@ public class DownedGameTests {
 			try {
 				String bar = Hc.downed().barName(id);
 				helper.assertTrue(bar != null && bar.matches(".*2:[23]\\d.*"), "bar keeps counting while they are offline: " + bar);
-				TestPlayers.drainSent(viewer);
+				long bossUpdates = TestPlayers.drainSent(viewer).stream().filter(k -> k instanceof ClientboundBossEventPacket).count();
+				helper.assertTrue(bossUpdates > 0, "the viewer was actually sent bar updates while the downed player was offline");
 				offset[0] = 181_000L; // the clock runs out while they are still offline
 				Hc.downed().tick();
 				PlayerRecord rec = Hc.state().get(id);

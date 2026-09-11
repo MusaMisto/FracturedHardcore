@@ -156,7 +156,8 @@ void normalize(ServerPlayer p, PlayerRecord rec) {
 |---|---|
 | damage source `is(BYPASSES_INVULNERABILITY)` (void, `/kill`, bleed-out kill) | allow death (true) |
 | already downed | allow death (only bypass damage can reach here) |
-| `finalLife()` | allow death (vanilla totem check then runs — totem = final-life insurance) |
+| a `death_protection` item (Totem of Undying) in either hand | allow (0.1.5, D25): vanilla's totem check fires, no death, no downed |
+| `finalLife()` | allow death (vanilla totem check then runs) |
 | otherwise | **enter downed**, return false, `setHealth(1)` |
 
 **Entry** (`DownedManager.enter`):
@@ -315,7 +316,7 @@ Respawn location is vanilla's (bed/anchor, else world spawn) — untouched.
 
 ## 7. Tier 3 — Final life & elimination
 
-- `deaths == 3`: alive at 4 hearts, downed never triggers, a held totem works as in vanilla.
+- `deaths == 3`: alive at 4 hearts, downed never triggers, a held totem works as in vanilla (as on every life since 0.1.5).
 - `deaths >= 4`: eliminated — spectator on respawn, stays spectator on join. No world-end
   condition; the world continues.
 - A Crimson Heart consumed at `deaths == 3` → `deaths == 2` → `finalLife()` false again,
@@ -423,9 +424,9 @@ set to the `list` slot. Written with `deaths` on every state change, by player *
   `ALLOW_DEATH` does not guarantee a death: vanilla's totem check runs afterwards. Counting there
   could charge a death that never happened — the worst direction of error. `AFTER_DEATH` fires only
   when `die()` ran.
-- **D4 · Totem interaction.** Downed takes precedence for non-final-life players (as the brief
-  states), so totems are never consumed before final life; on final life a totem works normally.
-  Bleed-out uses `generic_kill`, which bypasses totems, so bleed-out is unpreventable.
+- **D4 · Totem interaction (superseded by D25).** 0.1.0–0.1.4: downed took precedence for
+  non-final-life players, so totems were never consumed before final life. Bleed-out uses
+  `generic_kill`, which bypasses totems, so bleed-out is unpreventable (still true).
 - **D5 · Transient attribute modifiers** instead of persistent ones (§4).
 - **D6 · Bypass damage is not blocked while downed.** A downed player in the void, or `/kill`ed by
   an admin, dies immediately as a true death instead of falling for three minutes. This matches the
@@ -491,6 +492,11 @@ set to the `list` slot. Written with `deaths` on every state change, by player *
   land, and the 0.1.3 fallback then cleared the state. Now `bleedOut` checks `isInvulnerableTo`
   first, returns false, and the tick retries; the join handler never resolves expiry itself. The
   gametest joins a player with the client unloaded, exactly as production does.
+- **D25 · A held totem fires before downed, on every life** (0.1.5). Owner report: a player with a
+  totem in the offhand was downed instead of the totem firing, "a terrible bug". `ALLOW_DEATH`
+  now returns true when either hand holds a `death_protection` item and the source is not of the
+  bypass kind (the same test vanilla's `checkTotemDeathProtection` makes), so vanilla consumes the
+  totem and nobody is downed or charged. Bypass damage still ignores totems, as in vanilla.
 - **D24 · Wall-clock deadline** (0.1.4). The brief chose world time so "logging out does not pause
   it", but world time also stops while the server is empty (vanilla pause-when-empty, present in
   the owner's logs: "Server empty for 60 seconds, pausing") and while it is down. The intent is

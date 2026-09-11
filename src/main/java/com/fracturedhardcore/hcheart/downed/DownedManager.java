@@ -174,7 +174,6 @@ public final class DownedManager {
 		active.clear();
 		state.all().forEach((id, rec) -> { if (rec.isDowned() || rec.pendingKill()) active.add(id); }); // the map's own forEach: no per-record allocation
 		if (active.isEmpty()) return;
-		long now = state.now();
 		boolean second = server.getTickCount() % 20 == 0;
 		long overworldTime = server.overworld().getGameTime();
 		for (UUID id : active) { // the map is no longer being iterated: commits below are safe
@@ -191,8 +190,9 @@ public final class DownedManager {
 			if (rec.hasLegacyClock()) { // written by 0.1.3 or older in world ticks; world time is persisted, so the remainder is exact
 				rec = state.convertLegacyClock(id, overworldTime);
 				HcHeart.LOGGER.info("Downed clock of {} came from 0.1.3 (world ticks): {}", rec.lastKnownName(),
-						rec.downedExpired(now) ? "it had already run out, the death is owed" : Text.mmss(rec.downedMillisRemaining(state.now())) + " left, converted");
+						rec.downedExpired(state.now()) ? "it had already run out, the death is owed" : Text.mmss(rec.downedMillisRemaining(state.now())) + " left, converted");
 			}
+			long now = state.now(); // read AFTER the repairs above: they stamp deadlines with the service clock, and a deadline of "now" must count as expired now
 			if (rec.downedExpired(now)) {
 				if (player == null) bleedOutOffline(id);
 				else bleedOut(player); // no-op once dead; otherwise lands as soon as vanilla accepts damage
