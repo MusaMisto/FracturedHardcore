@@ -7,7 +7,8 @@ public final class Rules {
 	public static final int HEARTS_LOST_PER_DEATH = 2;
 	public static final int FINAL_LIFE_DEATHS = 3;
 	public static final int ELIMINATION_DEATHS = 4;
-	public static final long DOWNED_DURATION_TICKS = 180L * 20L;
+	/** Wall-clock milliseconds. Logging out, an empty (paused) server or a restart never stop this clock. */
+	public static final long DOWNED_DURATION_MS = 180L * 1000L;
 	public static final int REVIVE_DURATION_TICKS = 8 * 20;
 	public static final int REVIVE_MIN_FOOD = 6;
 	public static final int REVIVE_FOOD_COST = 6;

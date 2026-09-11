@@ -29,4 +29,11 @@ class DeathRulesTest {
 		assertFalse(DeathRules.shouldRescueFromSpectator(rec(0, 0), false));
 	}
 	private static PlayerRecord rec(int deaths, long downedUntil) { return new PlayerRecord(deaths, 0, downedUntil, "p"); }
+	@Test void pendingKillIsAlwaysATrueDeathAndNeverBlocked() {
+		PlayerRecord p = new PlayerRecord(1, 0, 0L, 0L, true, "p");
+		assertEquals(Outcome.TRUE_DEATH, DeathRules.onLethalDamage(p, false));
+		assertEquals(Outcome.TRUE_DEATH, DeathRules.onLethalDamage(p, true));
+		assertFalse(DeathRules.blocksDamageWhileDowned(p, false));
+		assertFalse(DeathRules.respawnsAsSpectator(p));
+	}
 }

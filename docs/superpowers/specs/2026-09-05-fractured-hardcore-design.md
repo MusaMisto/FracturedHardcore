@@ -73,7 +73,7 @@ Key vanilla facts (read from the decompiled 26.2 sources):
 Per player, persisted (world-level `SavedData`, keyed by UUID):
 
 ```java
-record PlayerRecord(int deaths, int restoresUsed, long downedUntilTick, long downedPausedTicks, String lastKnownName)
+record PlayerRecord(int deaths, int restoresUsed, long downedUntilMs, long downedPausedMs, boolean pendingKill, String lastKnownName)
 ```
 
 Derived (pure Java, unit-tested, no Minecraft imports):
@@ -83,8 +83,10 @@ int     maxHearts()    { return Math.max(4, 10 - 2 * deaths); }   // 10 → 8 �
 boolean finalLife()    { return deaths >= 3; }                    // alive at 4 hearts, no safety net
 boolean eliminated()   { return deaths >= 4; }                    // run over → spectator
 int     restoreCost()  { return restoresUsed + 1; }               // 1, 2, 3, … never resets
-boolean isDowned()     { return downedUntilTick > 0; }
-boolean isDownedPaused() { return isDowned() && downedPausedTicks > 0; }   // 0.1.3: a revive channel holds the clock
+boolean isDowned()     { return downedUntilMs > 0; }                        // 0.1.4: wall-clock deadline (epoch ms)
+boolean isDownedPaused() { return isDowned() && downedPausedMs > 0; }     // 0.1.3: a revive channel holds the clock
+boolean hasLegacyClock() { return legacyDeadlineTicks > 0; }               // 0.1.4: ≤ 0.1.3 tick deadline, converted on the first tick
+// pendingKill (0.1.4): bled out offline; death already counted, the vanilla kill is owed on the next join
 ```
 
 **`eliminated()` is an addition.** The brief uses `finalLife()` both for "the downed state no
@@ -96,8 +98,12 @@ Invariants:
 
 - `deaths` increments only in the true-death handler; decrements only by Heart restore, never below 0.
 - `restoresUsed` never decreases (except `/hc reset` / `/hc set`).
-- `downedUntilTick` is an absolute overworld game-time tick, 0 when not downed.
-- `downedPausedTicks` (0.1.3) is what is left on the clock while a revive channel holds it; 0 means
+- `downedUntilMs` is a wall-clock deadline (epoch milliseconds), 0 when not downed. World time was
+  used until 0.1.3; it stops while the server is empty (vanilla pause-when-empty) or down (D24).
+- `pendingKill` (0.1.4) means the clock ran out while the player was offline: the death is already
+  counted; the vanilla kill is applied once they join and their client has loaded, and
+  `AFTER_DEATH` settles it without counting. Construction zeroes any clock when it is set (D22).
+- `downedPausedMs` (0.1.3) is what is left on the clock while a revive channel holds it; 0 means
   the clock is running. Only `pauseDowned`/`resumeDowned` change it; a fresh clock or a clear resets
   it, and a value without a clock is dropped on construction. `downedExpired` is false while paused.
 - `lastKnownName` is refreshed on every join; it lets `/hc info`, the scoreboard and the audit
@@ -154,7 +160,7 @@ void normalize(ServerPlayer p, PlayerRecord rec) {
 | otherwise | **enter downed**, return false, `setHealth(1)` |
 
 **Entry** (`DownedManager.enter`):
-1. `downedUntilTick = overworld.getGameTime() + 3600` → persisted + flushed **first**.
+1. `downedUntilMs = wall-clock now + 180 000` → persisted + flushed **first**.
 2. `setHealth(1)`; clear fire (`clearFire()`); stop using item.
 3. Glow: `setGlowingTag(true)` (entity flag, not the status effect).
 4. Movement: transient attribute modifiers `hcheart:downed_speed` (MOVEMENT_SPEED,
@@ -165,35 +171,44 @@ void normalize(ServerPlayer p, PlayerRecord rec) {
 6. De-target sweep in a 64-block box: every `Mob` whose `getTarget() == player` → `setTarget(null)`;
    every `Warden` → `clearAnger(player)`. Repeated every 20 ticks while downed.
 7. Boss bar (`ServerBossEvent`, RED, PROGRESS) shown to **all online players**:
-   `"<name> is downed · 2:59 · right-click to revive"`, progress = remaining/3600.
+   `"<name> is downed · 2:59 · right-click to revive"`, progress = remaining/180 000.
 8. Chat broadcast: `"<name> is downed in <dimension> at x, y, z — 3:00 to revive them."`
 9. Private chat to the downed player: how to be revived, plus a clickable **[Give up]** link that
    runs `/hc giveup` (see **Give up** below).
 
-**While downed** (`ServerTickEvents.END_SERVER_TICK`, per online downed player):
+**While downed** (`ServerTickEvents.END_SERVER_TICK`, per downed **record**, online or not; D22):
+- Offline and expired → `recordOfflineBleedOut`: deaths+1, downed cleared, `pendingKill = true`,
+  audit `DEATH … bled out offline, kill owed on next join`, bar removed, line and quiet bell to
+  everyone online. Online and expired → `bleedOut`, retried every tick until vanilla accepts it.
+- The bar is refreshed once a second from the record alone, so it keeps counting for an offline
+  player. A record owing a kill → `bleedOut` while its player is online.
 - `ALLOW_DAMAGE` returns `false` unless the source `is(BYPASSES_INVULNERABILITY)`.
 - Health pinned at 1 (natural regen would otherwise refill hearts visually).
 - Boss bar text/progress updated each second.
 - `AttackBlockCallback`, `UseBlockCallback`, `AttackEntityCallback`, `UseEntityCallback`,
   `UseItemCallback` return `FAIL` for a downed actor, with an action-bar notice
   `"You are downed and cannot do that."` (see §12-D7 for why the hand is not faked empty).
-- If `overworld.getGameTime() >= downedUntilTick` → **bleed out**.
+- If `now >= downedUntilMs` (wall clock) → **bleed out**: online `bleedOut` (retried until vanilla
+  accepts it), offline `recordOfflineBleedOut`.
 
 **Untargetable**: mixin `Player.canBeSeenAsEnemy` → false while downed (covers every
 `TargetingConditions`/`NearestAttackableTargetGoal`/brain sensor path plus `Mob.setTarget`
 validation); mixin `Warden.canTargetEntity` → false for a downed player (covers anger, sniffing,
 sonic boom). The invisibility effect is **not** used.
 
-**Bleed-out** (`DownedManager.bleedOut`): tear down the downed presentation, then
-`player.hurtServer(level, damageSources().genericKill(), Float.MAX_VALUE)`. `generic_kill`
-bypasses invulnerability, totems and armour; the vanilla death message reads "<name> died", and
-the mod's own chat lines add the detail. This is the only downed → dead route besides bypass damage.
+**Bleed-out** (`DownedManager.bleedOut`): `player.hurtServer(level, damageSources().genericKill(),
+Float.MAX_VALUE)`. `generic_kill` bypasses invulnerability, totems and armour, with one exception
+verified in the 26.2 bytecode: `ServerPlayer.isInvulnerableTo` returns true for **every** source until
+`connection.hasClientLoaded()`, and while changing dimension. `bleedOut` therefore asks
+`isInvulnerableTo` first, returns false without touching state, and the tick retries; it never clears
+the downed state on failure (D23). The vanilla death message reads "<name> died", and the mod's own
+chat lines add the detail. This is the only downed → dead route besides bypass damage.
 
 **Clock pause** (0.1.3, D21): `ReviveManager.tryStart` calls `DownedManager.pauseClock` right after
-the channel is registered → `HeartStateService.pauseDowned` stores `downedUntilTick − now` (at least
-1) in `downedPausedTicks` and audits `DOWNED_PAUSED`. A break, cancel or disconnect calls
+the channel is registered → `HeartStateService.pauseDowned` stores `downedUntilMs − now` (at least
+1 ms) in `downedPausedMs` and audits `DOWNED_PAUSED`. A break, cancel or disconnect calls
 `resumeClock` by UUID (the downed player may already be offline) → `resumeDowned` sets
-`downedUntilTick = now + downedPausedTicks`, clears the pause, audits `DOWNED_RESUMED`. A success
+`downedUntilMs = now + downedPausedMs`, clears the pause, audits `DOWNED_RESUMED`. A success
 clears the whole downed state as before. Two repairs cover a crash mid-channel: the join handler
 resumes a paused record when no channel exists, and `DownedManager.tick` does the same every tick.
 The boss bar reads "clock paused while being revived" and `/hc info` shows "(clock paused)".
@@ -208,21 +223,28 @@ at pitch 0.5. All are world sounds (`Level.playSound`), so bystanders hear them 
 **Give up** (`/hc giveup` → `/hc giveup confirm`, v0.1.1): a downed player alone on the server
 need not wait out the clock. Step 1 (`/hc giveup`) only prints the price ("You would respawn with
 N hearts …") and a clickable **[Confirm: give up]** link; step 2 (`/hc giveup confirm`) calls
-`DownedManager.giveUp`, which refuses unless the player is downed, audits `GAVE_UP` with the time
-left, broadcasts `"<name> gave up and accepted the death."`, then calls `bleedOut`. Because it is the
+`DownedManager.giveUp`, which refuses unless the player is downed, calls `bleedOut` first, and only
+if the kill landed audits `GAVE_UP` with the time that was left and broadcasts `"<name> gave up and
+accepted the death."` (0.1.4: a refused kill announces nothing; the command answers "try again in a
+moment" instead of "You are not downed"). Because it is the
 same `generic_kill` path, the penalty is exactly a bleed-out. Both steps are `run_command` click
 events on vanilla chat components; the client sends them as ordinary unsigned commands.
 
 **Teardown** (`DownedManager.clear`, idempotent, used by revive, bleed-out, death, join):
-`downedUntilTick = 0` (persisted), glow off, pose reset to STANDING, remove both movement
+`downedUntilMs = 0` (persisted), glow off, pose reset to STANDING, remove both movement
 modifiers, remove boss bar, cancel any revive channel on this target.
 
-**Crash / relog recovery**: the downed flag is in `SavedData`. On join, if `downedUntilTick > 0`
-and the timer has expired → `bleedOut` immediately; otherwise → `reenter` (re-applies all
-presentation from state). On join when *not* downed → `setGlowingTag(false)` and remove the
-downed modifiers (stale leftovers from a crash mid-downed).
+**Crash / relog recovery**: the downed flag is in `SavedData`. On join, a downed record →
+`reenter` (re-applies all presentation from state) regardless of expiry: the kill cannot land at JOIN
+time (client not loaded), so the next tick resolves an expired clock once it can. A record owing a
+kill, or not downed → `setGlowingTag(false)` and remove the downed modifiers (stale leftovers from a
+crash mid-downed); the tick lands the owed kill once the client has loaded.
 
-**Timer is world time**, so logging out does not pause it.
+**Timer is wall-clock time** (0.1.4, D24), so logging out, an empty (paused) server or a restart
+never stop it. Records from 0.1.3 or older carry a world-tick deadline (`legacyDeadlineTicks`); overworld
+game time is persisted, so the first tick converts it exactly (`withLegacyClockConverted`: remaining
+ticks × 50 ms), and a clock that had already run out under 0.1.3 rules owes the death (offline →
+`recordOfflineBleedOut`). A paused remainder is a duration and converts at 50 ms per tick on load.
 
 ### Revive channel (`ReviveChannel`)
 
@@ -362,12 +384,13 @@ Hearts are tradeable; nothing prevents it. Optional craft broadcast: hidden adva
 3. Spectator rescue: `if (!rec.eliminated() && player.isSpectator())` → `setGameMode(SURVIVAL)`,
    teleport via `findRespawnPositionAndUseSpawnBlock(false, DO_NOTHING)` + `teleport(transition)`,
    `setHealth(getMaxHealth())`, `removeAllEffects()`. Order: gamemode, teleport, health, effects.
-4. Downed resolution: `downedUntilTick > 0` → expired ? `bleedOut` : `reenter`; else clear stale
+4. Downed resolution: `downedUntilMs > 0` → `reenter` (expiry is resolved by the tick once the
+   client has loaded; a kill cannot land at JOIN time); owing a kill, or not downed → clear stale
    glow and downed modifiers.
 5. `ScoreboardService.sync(rec)`.
 
-`ServerPlayerEvents.LEAVE` cancels any revive channel involving the player and drops the boss
-bar reference (state stays persisted).
+`ServerPlayerEvents.LEAVE` cancels any revive channel involving the player and removes them as a
+viewer of every bar. Their own bar, clock and state stay: the tick keeps counting them down (D22).
 
 ---
 
@@ -446,10 +469,36 @@ set to the `list` slot. Written with `deaths` on every state change, by player *
   `ClientboundSoundPacket`s on the mock connection and checks 20 non-decreasing pitches ending at 2.0.
 - **D21 · Revive channel pauses the bleed-out clock** (0.1.3). Owner report: a friend reached a
   downed player with under 8 s left and the player bled out mid-channel. The pause is persisted as a
-  remainder (`downedPausedTicks`) rather than by moving the deadline every tick, so it costs two
+  remainder (`downedPausedMs`) rather than by moving the deadline every tick, so it costs two
   commits per channel instead of one per tick, survives crashes, and stays idempotent (pause/resume
   are no-ops when already in that state). Resume uses the UUID so a disconnecting downed player's
-  clock runs on world time as before.
+  clock keeps running as before.
+- **D22 · The tick walks the records, not the online players** (0.1.4). Owner report: a downed
+  friend disconnected, the boss bar froze for everyone else, and the clock was only settled when he
+  came back. The 0.1.3 loop iterated `getPlayers()`, so an offline downed player was invisible to
+  it. Now every record is visited: bars refresh from the record, and an expiry while offline
+  counts the death at that moment (`recordOfflineBleedOut`, `pendingKill = true`, announced to
+  everyone). The vanilla kill is owed on the next join and `AFTER_DEATH` settles it with
+  `applyPendingKill` instead of counting. `pendingKill` zeroes any clock on construction so one
+  bleed-out can never become two deaths. Chosen over "count at join" so the tab list, `/hc info`
+  and the audit log are right at the moment it happened, and over an in-memory flag so a restart
+  between expiry and join cannot lose it.
+- **D23 · A failed kill never clears state** (0.1.4). Owner report: a player who logged in with an
+  expired clock was "self-revived". The server log showed `Bleed-out kill did not take … clearing
+  downed state` at the join second. Root cause, verified in the 26.2 bytecode:
+  `ServerPlayer.isInvulnerableTo` is true for every damage source, `generic_kill` included, until
+  the client reports loaded; the join handler runs before that, so the kill at join could never
+  land, and the 0.1.3 fallback then cleared the state. Now `bleedOut` checks `isInvulnerableTo`
+  first, returns false, and the tick retries; the join handler never resolves expiry itself. The
+  gametest joins a player with the client unloaded, exactly as production does.
+- **D24 · Wall-clock deadline** (0.1.4). The brief chose world time so "logging out does not pause
+  it", but world time also stops while the server is empty (vanilla pause-when-empty, present in
+  the owner's logs: "Server empty for 60 seconds, pausing") and while it is down. The intent is
+  "the clock continues regardless", so the deadline is now epoch milliseconds. Tests use a clock
+  seam (`HeartStateService.setClock`) because the gametest server ticks faster than real time.
+  Migration: a 0.1.3 deadline is world ticks, and world time is persisted, so it is converted
+  exactly on the first tick rather than reset (a review of the first draft caught the "cannot
+  convert" premise as false).
 - **Absorption / Health Boost** stack on top of the penalty (vanilla semantics; temporary, costly,
   and blocking them would need extra mixins for marginal benefit).
 
@@ -485,8 +534,12 @@ re-acquire the target; warden `canTargetEntity` false · revive success (no deat
 health, teardown) · revive refused below 6 food · single reviver lock · revive breaks on reviver
 movement, on damage, on food 0 · bleed-out at expiry (death counted, respawn at 8 hearts) ·
 `/hc giveup` prompt is harmless, `/hc giveup confirm` kills and counts, refused when not downed ·
-a revive channel pauses a 40-tick clock past its deadline, a break resumes it and the player bleeds
-out later · a paused record resumes on join and by the tick repair · record pause/resume arithmetic
+a revive channel pauses a 2 s clock a minute past its deadline, a break resumes it and the player
+bleeds out later (clock seam) · a paused record resumes on join and by the tick repair · an expired
+clock at join with the client unloaded keeps the state and the kill lands once loaded, counted once ·
+an offline expiry counts the death, keeps the bar counting, tells everyone, and the rejoin settles
+the owed kill exactly once (own batch, clock seam) · ≤ 0.1.3 tick-based files load as legacy clocks
+and a paused remainder converts (JUnit) · record pause/resume arithmetic
 and codec round trip incl. pre-0.1.3 files (JUnit) ·
 revive plays 20 rising notes and a chime (captured packets) · crafted Heart carries the model key ·
 join stamps pre-0.1.2 Hearts in inventory and ender chest · `ResourcePackTest` (JUnit) ties the pack

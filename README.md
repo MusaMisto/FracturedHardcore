@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/Loom-1.17-1F6FEB" alt="Fabric Loom 1.17">
   <img src="https://img.shields.io/badge/Mappings-Mojang%20official-5865F2" alt="Mojang mappings">
   <img src="https://img.shields.io/badge/Side-server--only-2EA043" alt="server-side only">
-  <img src="https://img.shields.io/badge/Tests-30%20unit%20%C2%B7%2037%20gametest-2EA043" alt="Tests: 30 unit, 37 gametest">
+  <img src="https://img.shields.io/badge/Tests-35%20unit%20%C2%B7%2041%20gametest-2EA043" alt="Tests: 35 unit, 41 gametest">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/MusaMisto/FracturedHardcore" alt="license"></a>
   <img src="https://img.shields.io/github/last-commit/MusaMisto/FracturedHardcore" alt="last commit">
 </p>
@@ -70,16 +70,19 @@ When lethal damage arrives and you are **not** on your final life, you do not di
 - You are **immune to all ordinary damage**. Hostile mobs drop you as a target and cannot re-acquire you. The Warden
   ignores you (its anger, sniffing and sonic boom all route through the same check).
 - You cannot attack, place, break, use items or interact with anything. Attempts get an action-bar notice.
-- A red boss bar, visible to everyone online, shows who is downed and the time left: **180 seconds of world time**, so
-  logging out does not pause it. When it runs out you **bleed out** and die for real.
+- A red boss bar, visible to everyone online, shows who is downed and the time left: **180 seconds of real time**. Logging
+  out, an empty server or a server restart do not stop it. When it runs out you **bleed out** and die for real, **online or
+  not**: if you are offline, the death is counted the moment the clock hits zero, everyone is told, and the actual kill
+  lands the moment you next log in.
 - **The clock stops while someone is reviving you.** The moment a revive channel starts, the bar freezes with the time
   left; if the channel breaks, it resumes from exactly there. Reaching a friend with two seconds to spare is enough.
 - Alone on the server, or nobody can reach you? Click **[Give up]** in the downed message or run `/hc giveup`, then
   confirm. You bleed out immediately and take the normal death penalty: it is the same death path as the clock running
   out, nothing more and nothing less.
 - Damage that bypasses invulnerability (the void, `/kill`) still kills you outright. That is a true death.
-- If the server crashes or you relog while downed, the state is restored from disk: still downed if time remains,
-  bled out immediately if not.
+- If the server crashes or you relog while downed, the state is restored from disk: still downed if time remains, killed a
+  moment after you appear if not. The kill waits until your client has finished loading, because vanilla rejects every
+  kind of damage before that; it never turns into a free revive.
 
 ### Revive
 
@@ -158,7 +161,7 @@ accepted as an ingredient in **any** recipe (including the beacon recipe and the
    the pack is built reproducibly, so `shasum -a 1` on your copy gives the same value):
 
    ```properties
-   resource-pack=https://github.com/MusaMisto/FracturedHardcore/releases/download/v0.1.3/fractured-hardcore-resourcepack-0.1.3.zip
+   resource-pack=https://github.com/MusaMisto/FracturedHardcore/releases/download/v0.1.4/fractured-hardcore-resourcepack-0.1.4.zip
    resource-pack-sha1=1223e50c22fd2ca07e44f9c48c13ef697c86ca2d
    resource-pack-prompt={"text":"Fractured Hardcore: draws the Crimson Heart as a heart. Optional."}
    require-resource-pack=false
@@ -180,7 +183,7 @@ over from a crash. No `player.dat` editing, ever.
 | `/hc info` | anyone | Your own record: deaths, restores used, max hearts, next Heart cost, status. |
 | `/hc info <player>` | op (level 2) | Same for any player, **online or offline** (resolves through the server's name cache). |
 | `/hc giveup` | anyone, only while downed | Step 1 of 2: explains the penalty and shows a clickable **[Confirm: give up]** link. Nothing happens yet. |
-| `/hc giveup confirm` | anyone, only while downed | Step 2 of 2: bleed out now, counted exactly like the clock running out. Refused with "You are not downed." otherwise. |
+| `/hc giveup confirm` | anyone, only while downed | Step 2 of 2: bleed out now, counted exactly like the clock running out. Refused with "You are not downed." otherwise, or with "try again in a moment" while your client is still loading; nothing is announced unless the kill landed. |
 | `/hc set <player> <deaths> <restores>` | op | Manual correction. Clears downed state. If the player is online, health cap, game mode (spectator ↔ survival) and scoreboard are re-derived immediately. |
 | `/hc reset all` | op | Wipes every record, normalises and heals everyone online, rescues spectators. Offline players are fixed on their next join. |
 | `/hc give <player> [count]` | op | Gives 1–64 Crimson Hearts. |
@@ -190,7 +193,7 @@ over from a crash. No `player.dat` editing, ever.
 | Path | Purpose |
 |---|---|
 | `<world>/data/hcheart/players.dat` | Persistent state, vanilla `SavedData` (NBT). Flushed **synchronously** on every mutation. Included in normal world saves and backups. |
-| `logs/hcheart-audit.log` | Append-only audit trail: ISO timestamp, UUID, name, event (`INIT`, `DEATH`, `RESTORE`, `DOWNED`, `DOWNED_CLEARED`, `DOWNED_PAUSED`, `DOWNED_RESUMED`, `REVIVED`, `GAVE_UP`, `SET`, `RESET`, `GIVE`, `RENAME`, `RESTORE_SHORT`), details. Read this when someone says they were shorted at 2 a.m. |
+| `logs/hcheart-audit.log` | Append-only audit trail: ISO timestamp, UUID, name, event (`INIT`, `DEATH`, `DEATH_APPLIED`, `RESTORE`, `DOWNED`, `DOWNED_CLEARED`, `DOWNED_PAUSED`, `DOWNED_RESUMED`, `REVIVED`, `GAVE_UP`, `SET`, `RESET`, `GIVE`, `RENAME`, `RESTORE_SHORT`), details. Read this when someone says they were shorted at 2 a.m. |
 | Scoreboard objective `deaths_hc` | Display name "Deaths", shown in the `list` slot (tab list). Mirrors each player's death count. |
 
 `scripts/backup.sh <server-dir> <backup-dir> [keep]` performs a rolling `save-off` → `save-all flush` → `tar` → `save-on`
@@ -349,32 +352,39 @@ stateDiagram-v2
 **Join** (`JoinHandler.onJoin`, `ServerPlayerEvents.JOIN`, fires at `PlayerList.placeNewPlayer` RETURN):
 `getOrCreate` record and refresh name → `HealthService.normalize` (base 20, penalty modifier, clamp) → rescue from
 spectator unless eliminated → resume a clock left paused by a channel that no longer exists (crash mid-revive) → downed:
-expired ? `bleedOut` : `reenter`; not downed: `clearPresentation` → add the player to existing boss bars → stamp any
-pre-0.1.2 Heart with the model key → scoreboard sync.
+`reenter` (an expired clock is **not** resolved here: vanilla rejects every kind of damage until the client reports
+loaded, so `DownedManager.tick` lands the kill a moment later); not downed, or owing a kill: `clearPresentation` → add the
+player to existing boss bars → stamp any pre-0.1.2 Heart with the model key → scoreboard sync.
 
 **Lethal damage** (`DownedEvents`, `ServerLivingEntityEvents.ALLOW_DEATH`): Fabric redirects the *second*
 `isDeadOrDying()` in `LivingEntity.hurtServer`, i.e. before the totem check and `die()`. Health is already ≤ 0 here.
-`DeathRules.onLethalDamage(record, source.is(BYPASSES_INVULNERABILITY))` returns `TRUE_DEATH` (bypass, already downed,
-or final life) → we return `true` and vanilla continues (totem check, then `die()`), or `ENTER_DOWNED` → `DownedManager.enter`
-persists `downedUntilTick = overworld game time + 3600` **first**, then sets health to 1, glow, prone pose, speed −75 %
+`DeathRules.onLethalDamage(record, source.is(BYPASSES_INVULNERABILITY))` returns `TRUE_DEATH` (owed kill pending, bypass, already
+downed, or final life) → we return `true` and vanilla continues (totem check, then `die()`), or `ENTER_DOWNED` → `DownedManager.enter`
+persists `downedUntilMs = wall-clock now + 180 000` **first**, then sets health to 1, glow, prone pose, speed −75 %
 and jump −100 % transient modifiers, clears mob targets and Warden anger within 48 blocks, creates the boss bar, broadcasts.
 
-**While downed** (`DownedManager.tick`, `END_SERVER_TICK`): resume a paused clock that no channel holds (crash repair); bleed
-out when expired, which a paused clock never is; otherwise pin health at 1, reassert glow
-and pose, every 20 ticks re-sweep targets and refresh the bar. `ALLOW_DAMAGE` returns false for non-bypass damage.
+**While downed** (`DownedManager.tick`, `END_SERVER_TICK`): walks **every record**, online or not. Per record: an owed
+kill (`pendingKill`) → `bleedOut` if the player is online, which lands once vanilla accepts damage; a paused clock that no
+channel holds → resume (crash repair); a legacy tick-based clock → converted from persisted world time; expired → offline:
+`recordOfflineBleedOut` (deaths+1, `pendingKill`, bar removed, line and quiet bell to everyone), online: `bleedOut`,
+retried every tick until it lands and never clearing state; otherwise, if online, pin health at 1, reassert glow and pose
+and re-sweep targets once a second; and once a second refresh the bar from the record alone, so it keeps counting while
+they are offline. `ALLOW_DAMAGE` returns false for non-bypass damage.
 Five interaction callbacks return `FAIL` for a downed actor (registered **before** the revive and Heart handlers so the lock
 wins). `/hc giveup` (chat prompt with a confirm link) then `/hc giveup confirm` → `DownedManager.giveUp`: refuse unless
 downed, audit `GAVE_UP`, broadcast, `bleedOut`. Commands are not covered by the interaction lock, so a downed player can run them.
 
 **Revive** (`ReviveEvents` → `ReviveManager.tryStart`, then `ReviveManager.tick`): a `Channel` records reviver, target,
 start position, elapsed ticks and last `hurtTime` of both, and `tryStart` pauses the target's clock (`DownedManager.pauseClock`
-→ `DOWNED_PAUSED`, the ticks left are stored on the record). Each tick: compute `ReviveRules.check(...)`; on a break reason,
-end (resume the clock: `DOWNED_RESUMED`, deadline = now + ticks left; low bass note) and notify; else `elapsed++`, drain one point from each player at ticks 27/53/80/107/133/160,
+→ `DOWNED_PAUSED`, the milliseconds left are stored on the record). Each tick: compute `ReviveRules.check(...)`; on a break reason,
+end (resume the clock: `DOWNED_RESUMED`, deadline = now + what was left; low bass note) and notify; else `elapsed++`, drain one point from each player at ticks 27/53/80/107/133/160,
 show progress every 4 ticks, play a note-block note every 8 ticks (`ReviveRules.notePitch`: whole semitones from 0.5 to
 2.0), and at 160 → `DownedManager.clear`, refill health, chime, broadcast, audit `REVIVED`.
 
 **True death** (`DeathEvents`): `AFTER_DEATH` fires at `ServerPlayer.die` TAIL, so the death is committed and a totem save
-never reaches it → `DownedManager.clear` → `recordDeath` (deaths+1, downed cleared) → line and quiet bell to everyone else.
+never reaches it → `DownedManager.clear` → if the record owes a kill (bled out offline): `applyPendingKill`, nothing counted
+and nothing announced, both happened when the clock ran out; else `recordDeath` (deaths+1, downed cleared) → line and
+quiet bell to everyone else.
 `AFTER_RESPAWN` fires at `PlayerList.respawn` TAIL (`alive == false` for deaths; `true` is an End-portal trip and only swaps
 boss-bar viewers) → `normalize` + refill → eliminated: title, subtitle, chat; else: bell to that player, chat lines.
 One mixin decides the client-facing side: the `PERFORM_RESPAWN` spectator switch = `eliminated()`. The login packet's
@@ -414,16 +424,25 @@ Everything the mod depends on in Minecraft or Fabric API, so an upgrade can be c
 ### Data model and persistence
 
 ```java
-record PlayerRecord(int deaths, int restoresUsed, long downedUntilTick, long downedPausedTicks, String lastKnownName)
+record PlayerRecord(int deaths, int restoresUsed, long downedUntilMs, long downedPausedMs, boolean pendingKill, String lastKnownName)
 int     maxHearts()   = max(4, 10 − 2·deaths)        boolean finalLife()  = deaths ≥ 3
 boolean eliminated()  = deaths ≥ 4                    int     restoreCost() = restoresUsed + 1
-boolean isDowned()    = downedUntilTick > 0           // absolute overworld game-time tick
-boolean isDownedPaused() = isDowned() && downedPausedTicks > 0   // ticks left while a revive channel holds the clock
+boolean isDowned()    = downedUntilMs > 0             // wall-clock deadline, epoch milliseconds
+boolean isDownedPaused() = isDowned() && downedPausedMs > 0     // ms left while a revive channel holds the clock
+boolean hasLegacyClock() = legacyDeadlineTicks > 0   // ≤ 0.1.3 world-tick deadline, converted exactly on the first tick
+boolean pendingKill      // bled out offline: death already counted, the vanilla kill is owed on the next join
 ```
 
-- Stored in `HeartState` (a `SavedData`) as NBT `{players: {"<uuid>": {deaths, restores_used, downed_until, downed_paused, name}}}`; every
-  field is `optionalFieldOf` with a default, negative counters fail to parse rather than load. `lastKnownName` lets
+- Stored in `HeartState` (a `SavedData`) as NBT `{players: {"<uuid>": {deaths, restores_used, downed_until_ms, downed_paused_ms, pending_kill, name}}}`;
+  every field is `optionalFieldOf` with a default, negative counters fail to parse rather than load. `lastKnownName` lets
   `/hc info`, the scoreboard and the audit log work for offline players.
+- **Rolling back to 0.1.3 after 0.1.4 has saved is unsupported.** 0.1.3 does not read `downed_until_ms` or `pending_kill`,
+  so a downed or owed-kill player would load as alive and the next 0.1.3 save would discard that state for good. To roll
+  back, restore the pre-upgrade `players.dat` from backup.
+- The codec also reads the ≤ 0.1.3 fields `downed_until` / `downed_paused` (world ticks). Overworld game time is persisted
+  in the world save, so the first server tick converts a tick deadline exactly (remaining ticks × 50 ms, logged); one that had
+  already run out under 0.1.3 rules owes the death instead. A paused remainder converts at 50 ms per tick on load. The
+  unconverted deadline is written back if a save happens first; converted records never carry the old keys.
 - The file is `<world>/data/hcheart/players.dat`. `DataFixTypes.SAVED_DATA_COMMAND_STORAGE` is used because vanilla
   registers it as an opaque (`DSL::remainder`) type in every schema, so no data fixer will ever rewrite our fields.
 - `HeartStateService.flush()` calls `saveAndJoin()` synchronously after every commit. Mutations are rare (deaths, restores,
@@ -449,9 +468,15 @@ boolean isDownedPaused() = isDowned() && downedPausedTicks > 0   // ticks left w
 10. **Every behaviour change ships with a test** and a matching README update.
 11. **A Heart is identified by `custom_data {hcheart: true}` only.** The name, glint and model key are cosmetic and may be
     missing on old items; `HeartItem.isHeart` must never look at them.
-12. **The revive pause is persisted, never held in memory.** A channel stores the ticks left on the record
-    (`downedPausedTicks`); a crash mid-revive resumes from that remainder on the next join or tick. Only
+12. **The revive pause is persisted, never held in memory.** A channel stores the milliseconds left on the record
+    (`downedPausedMs`); a crash mid-revive resumes from that remainder on the next tick, online or not. Only
     `HeartStateService.pauseDowned/resumeDowned` change it, and every fresh clock or clear resets it.
+13. **A failed kill never clears state.** `DownedManager.bleedOut` returns false when vanilla would reject the damage
+    (`ServerPlayer.isInvulnerableTo`: client not loaded yet, changing dimension) and the tick retries. The 0.1.3 fallback
+    that cleared the downed state on failure was the "self-revive" bug: a join with an expired clock always hit it.
+14. **The clock is wall-clock time and runs regardless.** `DownedManager.tick` walks the records, not the online players.
+    An expiry while offline calls `recordOfflineBleedOut` (death counted, `pendingKill` set); `AFTER_DEATH` settles an
+    owed kill with `applyPendingKill` and never counts it again. `pendingKill` zeroes any clock on construction.
 
 ### Tuning constants
 
@@ -461,7 +486,7 @@ All in `core/Rules.java`. Changing them changes unit-test expectations too.
 |---|---|---|
 | `BASE_HEARTS` / `FLOOR_HEARTS` / `HEARTS_LOST_PER_DEATH` | 10 / 4 / 2 | the ladder |
 | `FINAL_LIFE_DEATHS` / `ELIMINATION_DEATHS` | 3 / 4 | thresholds |
-| `DOWNED_DURATION_TICKS` | 3600 (180 s) | bleed-out clock, overworld game time |
+| `DOWNED_DURATION_MS` | 180 000 (180 s) | bleed-out clock, wall-clock time |
 | `REVIVE_DURATION_TICKS` | 160 (8 s) | channel length |
 | `REVIVE_MIN_FOOD` / `REVIVE_FOOD_COST` | 6 / 6 | entry requirement / points drained from each player |
 | `REVIVE_MAX_REVIVER_DRIFT` / `REVIVE_MAX_SEPARATION` | 2.0 / 4.0 blocks | break conditions |
@@ -477,16 +502,16 @@ All in `core/Rules.java`. Changing them changes unit-test expectations too.
 
 **Gametests** (`src/gametest`, `fabric-gametest-api-v1`): a headless `GameTestServer` boots with the mod and runs every
 `@GameTest` method listed in `src/gametest/resources/fabric.mod.json`. They exercise the real event chain, mixins,
-datapack and commands. Six classes, 37 tests:
+datapack and commands. Six classes, 41 tests:
 
 | Class | Covers |
 |---|---|
 | `JoinGameTests` | base-value repair, penalty application, spectator rescue, eliminated players stay spectator |
-| `DownedGameTests` | downed entry, immunity, bypass kills, zombie loses/cannot reacquire target, Warden ignores, bleed-out, 1-block-gap hitbox, relog recovery, paused clock resumes on join and by the tick repair |
+| `DownedGameTests` | downed entry, immunity, bypass kills, zombie loses/cannot reacquire target, Warden ignores, bleed-out, 1-block-gap hitbox, relog recovery, paused clock resumes on join and by the tick repair, an expired clock at join before the client loads is not a free revive (kill lands once loaded, counted once), an offline expiry counts the death, keeps the bar counting and settles the owed kill on rejoin (own batch), 0.1.3 tick clocks convert exactly / owe the death / resume a paused remainder |
 | `ReviveGameTests` | success with exact hunger drain, hungry reviver refused, single-reviver lock, breaks on move / damage / starvation, 20 rising notes and the chime reach the reviver (packet capture), a channel pauses the clock and a break resumes it with the time that was left (the player still bleeds out later) |
 | `DeathGameTests` | cap after respawn, Respawn keeps survival until elimination, elimination → spectator, totem only on final life |
 | `HeartGameTests` | recipe loads and crafts (with the model key), join stamps pre-0.1.2 Hearts, Hearts never an ingredient, beacon slot guard, escalating cost, refusals, lifting final life |
-| `CommandGameTests` | `/hc set`, `/hc reset all` (isolated batch), `/hc give`, `/hc info`, `/hc giveup` (prompt alone is harmless, confirm kills and counts, refused when not downed) |
+| `CommandGameTests` | `/hc set`, `/hc reset all` (isolated batch), `/hc give`, `/hc info`, `/hc giveup` (prompt alone is harmless, confirm kills and counts, refused when not downed, refused without any announcement while the client is unloaded) |
 
 Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 
@@ -501,7 +526,13 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 - Always `TestPlayers.leave(player)` in a `finally` block; use `helper.runAfterDelay` for anything that needs ticks, and
   raise `maxTicks` accordingly.
 - `TestPlayers.drainSent(player)` returns every packet the server wrote to that mock client since the last drain (the
-  `EmbeddedChannel` has no encoder, so you get raw packet objects). Use it to assert sounds, titles or messages.
+  `EmbeddedChannel` has no encoder, so you get raw packet objects). It flushes first: vanilla suspends flushing on every
+  connection for the duration of a server tick, so a packet written earlier in the same tick is still in the write buffer.
+- `TestPlayers.join(helper, name, pos, uuid, false)` leaves the client **unloaded**, exactly what a real join looks like at
+  JOIN time (vanilla rejects all damage, `generic_kill` included). Seed the record under that UUID first, then
+  `markClientLoaded` when the "client" has finished loading.
+- `Hc.state().setClock(...)` jumps the wall clock; restore it in a `finally`. The clock is shared by every record, so a test
+  that jumps it needs its own environment (`clock_pause`, `clock_offline`), or it expires other tests' downed players.
 - To add a test class, register it under `fabric-gametest` in the gametest `fabric.mod.json`.
 
 ### Upgrading Minecraft or Fabric
@@ -531,7 +562,10 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 | Recipe missing in game | Server log at datapack load: search for `hcheart`. The gametest `recipeLoadsAndCraftsAHeart` guards this. |
 | Heart shows as a star for one player | They declined the pack, or the server has no `resource-pack` line, or `resource-pack-sha1` does not match the zip (`shasum -a 1`); on a mismatch the client discards the download. |
 | Heart shows as a purple-and-black box | The pack and the jar are from different releases; use the zip shipped with the jar. |
-| `/hc info` says "clock paused" but nobody is reviving | Self-heals within a tick while the player is online and on their next join otherwise; the audit log shows `DOWNED_RESUMED … (repair)`. |
+| `/hc info` says "clock paused" but nobody is reviving | Self-heals within a tick, online or not; the audit log shows `DOWNED_RESUMED … (repair)`. |
+| `Bleed-out of <name> waits for their client to finish loading` in the log | Normal: the player joined with an expired or owed clock; the kill lands as soon as their client reports loaded (usually the same second). If it never does, the player cannot act either: vanilla keeps them invulnerable and frozen until then. |
+| A player "self-revived" after logging in downed (0.1.3) | The 0.1.3 fallback cleared the state when the kill at join failed. Look for `DOWNED_CLEARED bleed-out fallback` in the audit log to find affected players and restore the missed death with `/hc set`. Fixed in 0.1.4. |
+| `Downed clock of <name> came from 0.1.3 (world ticks): …` | Expected once after upgrading from ≤ 0.1.3 for a player who was downed at that moment: the remainder is converted from persisted world time, or the death is owed if it had already run out. |
 | `Failed to parse saved data for 'SavedDataType[hcheart:players]'` | The file is damaged; vanilla starts fresh. Restore `players.dat` from backup or rebuild records from the audit log with `/hc set`. |
 
 ### Known limitations
@@ -542,8 +576,9 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
   eliminated player becomes a spectator. No vanilla packet separates the two, and the flag cannot change without a reconnect.
 - A downed player's **own camera** stays at standing height in open areas because the vanilla client computes its own pose;
   everyone else sees them prone, the server hitbox is prone, and in a 1-block gap the client crawls too.
-- A server crash in the middle of a revive leaves the clock paused until the downed player next joins; it then resumes with
-  the time that was left, in the player's favour.
+- Expiry is noticed by the server tick. While the server is down, or paused because it is empty (vanilla
+  `pause-when-empty-seconds`), no tick runs, so an expiry that falls in that window is recorded and announced on the first
+  tick after a player joins rather than at the exact second. The clock itself is wall time: nothing is gained by the pause.
 - The heart texture needs the optional resource pack; a client without it sees the glinting star. A Heart left in a chest
   keeps the old look until a player carrying it logs in.
 - Absorption and Health Boost stack on top of the reduced cap, as in vanilla.

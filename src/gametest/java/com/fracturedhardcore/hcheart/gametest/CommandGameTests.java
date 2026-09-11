@@ -1,8 +1,11 @@
 package com.fracturedhardcore.hcheart.gametest;
 
+import java.util.UUID;
+
 import com.fracturedhardcore.hcheart.heart.HeartItem;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -75,6 +78,29 @@ public class CommandGameTests {
 			helper.assertFalse(Hc.state().get(p.getUUID()).isDowned(), "downed cleared");
 		} finally {
 			TestPlayers.leave(p);
+		}
+		helper.succeed();
+	}
+
+	/** Vanilla rejects every kind of damage until the client reports loaded: a give-up then must refuse cleanly, announcing nothing. */
+	@GameTest
+	public void giveUpWhileUnkillableAnnouncesNothing(GameTestHelper helper) {
+		ServerPlayer viewer = TestPlayers.join(helper, "cmd_gu_view", new Vec3(2, 2, 2));
+		UUID id = UUID.randomUUID();
+		Hc.state().getOrCreate(id, "cmd_giveup3");
+		Hc.state().enterDowned(id, Hc.state().now() + 100_000L);
+		ServerPlayer p = TestPlayers.join(helper, "cmd_giveup3", new Vec3(4, 2, 4), id, false);
+		try {
+			TestPlayers.drainSent(viewer);
+			TestPlayers.drainSent(p);
+			runAs(p, "hc giveup confirm");
+			helper.assertTrue(p.isAlive() && Hc.state().get(id).isDowned(), "still downed and alive");
+			helper.assertValueEqual(Hc.state().get(id).deaths(), 0, "nothing counted");
+			helper.assertTrue(TestPlayers.drainSent(p).stream().anyMatch(k -> k instanceof ClientboundSystemChatPacket c && c.content().getString().contains("Try again")), "told to retry, not 'not downed'");
+			helper.assertFalse(TestPlayers.drainSent(viewer).stream().anyMatch(k -> k instanceof ClientboundSystemChatPacket c && c.content().getString().contains("gave up")), "nobody was told they gave up");
+		} finally {
+			TestPlayers.leave(p);
+			TestPlayers.leave(viewer);
 		}
 		helper.succeed();
 	}

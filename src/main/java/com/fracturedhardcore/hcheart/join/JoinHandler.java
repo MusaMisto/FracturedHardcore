@@ -28,10 +28,10 @@ public final class JoinHandler {
 		// 4. A clock paused by a revive channel that no longer exists (crash mid-revive) runs again from what was left.
 		if (rec.isDownedPaused() && !s.revive().isChanneling(player.getUUID())) rec = s.state().resumeDowned(player.getUUID(), "join");
 
-		// 5. Resolve downed state against world time; clear stale presentation otherwise.
+		// 5. Still downed: re-apply the presentation from state. An expired clock is NOT resolved here: at JOIN time vanilla
+		//    rejects every kind of damage until the client reports loaded, so DownedManager.tick lands the kill a moment later.
 		if (rec.isDowned()) {
-			if (rec.downedExpired(s.state().now())) s.downed().bleedOut(player);
-			else s.downed().reenter(player, rec);
+			s.downed().reenter(player, rec);
 		} else {
 			s.downed().clearPresentation(player);
 		}

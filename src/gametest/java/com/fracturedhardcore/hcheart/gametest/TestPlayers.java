@@ -31,8 +31,18 @@ final class TestPlayers {
 	private TestPlayers() {}
 
 	static ServerPlayer join(GameTestHelper helper, String name, Vec3 relativePos) {
+		return join(helper, name, relativePos, UUID.randomUUID(), true);
+	}
+
+	/**
+	 * @param id           fixed UUID so a test can seed the record before the join handler runs
+	 * @param clientLoaded false leaves the player exactly as a real join sees it at JOIN time: the client has not sent
+	 *                     PlayerLoaded yet, so vanilla treats the player as invulnerable to everything. Call
+	 *                     {@link #markClientLoaded} later to simulate the client finishing its load.
+	 */
+	static ServerPlayer join(GameTestHelper helper, String name, Vec3 relativePos, UUID id, boolean clientLoaded) {
 		MinecraftServer server = helper.getLevel().getServer();
-		GameProfile profile = new GameProfile(UUID.randomUUID(), name);
+		GameProfile profile = new GameProfile(id, name);
 		CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
 		ServerPlayer player = new ServerPlayer(server, helper.getLevel(), profile, cookie.clientInformation()) {
 			@Override
@@ -41,7 +51,7 @@ final class TestPlayers {
 		Connection connection = new Connection(PacketFlow.SERVERBOUND);
 		channels.put(profile.id(), new EmbeddedChannel(connection));
 		server.getPlayerList().placeNewPlayer(connection, player, cookie);
-		markClientLoaded(player);
+		if (clientLoaded) markClientLoaded(player);
 		player.setGameMode(GameType.SURVIVAL);
 		// Solid footing: the default test structure is empty air.
 		helper.setBlock(new BlockPos(Mth.floor(relativePos.x), Mth.floor(relativePos.y) - 1, Mth.floor(relativePos.z)), Blocks.STONE);
@@ -64,11 +74,16 @@ final class TestPlayers {
 		player.connection.handleAcceptPlayerLoad(new ServerboundPlayerLoadedPacket());
 	}
 
-	/** Packets the server wrote to this mock client since the last drain. The channel has no encoder, so these are the raw packet objects. */
+	/**
+	 * Packets the server wrote to this mock client since the last drain. The channel has no encoder, so these are the raw
+	 * packet objects. Vanilla suspends flushing on every connection for the duration of a server tick and flushes at its
+	 * end, so a packet written earlier in the current tick is still in the write buffer: flush first, then read.
+	 */
 	static List<Packet<?>> drainSent(ServerPlayer player) {
 		List<Packet<?>> out = new ArrayList<>();
 		EmbeddedChannel ch = channels.get(player.getUUID());
 		if (ch == null) return out;
+		ch.flushOutbound();
 		Object o;
 		while ((o = ch.readOutbound()) != null) if (o instanceof Packet<?> p) out.add(p);
 		return out;

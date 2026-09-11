@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import com.fracturedhardcore.hcheart.core.PlayerRecord;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -56,38 +57,45 @@ public class ReviveGameTests {
 		});
 	}
 
-	@GameTest(maxTicks = 200)
+	/** Own batch: it jumps the shared wall clock, which would expire every other test's downed player. */
+	@GameTest(environment = "hcheart-gametest:clock_pause")
 	public void reviveChannelPausesTheClockAndABreakResumesIt(GameTestHelper helper) {
 		ServerPlayer t = downedTarget(helper, "rv_t8");
 		ServerPlayer r = reviver(helper, "rv_r8");
-		Hc.state().enterDowned(t.getUUID(), Hc.state().now() + 40); // 2 s left: far less than the 8 s channel
-		helper.assertTrue(Hc.revive().tryStart(r, t).consumesAction(), "channel started");
-		helper.assertTrue(Hc.state().get(t.getUUID()).isDownedPaused(), "clock paused the moment the channel started");
-		helper.assertValueEqual(Hc.state().get(t.getUUID()).downedPausedTicks(), 40L, "with what was left on it");
-		helper.runAfterDelay(70, () -> { // the clock would have run out 30 ticks ago
+		long[] offset = {0L};
+		Hc.state().setClock(() -> System.currentTimeMillis() + offset[0]);
+		try {
+			Hc.state().enterDowned(t.getUUID(), Hc.state().now() + 2_000L); // 2 s left: far less than the 8 s channel
+			helper.assertTrue(Hc.revive().tryStart(r, t).consumesAction(), "channel started");
+			PlayerRecord rec = Hc.state().get(t.getUUID());
+			helper.assertTrue(rec.isDownedPaused(), "clock paused the moment the channel started");
+			helper.assertTrue(rec.downedPausedMs() > 1_900L && rec.downedPausedMs() <= 2_000L, "with what was left on it: " + rec.downedPausedMs());
+			offset[0] = 60_000L; // a minute passes: the deadline is long gone
+			Hc.downed().tick();
 			helper.assertTrue(t.isAlive() && !t.isDeadOrDying(), "still alive while being revived");
 			helper.assertTrue(Hc.state().get(t.getUUID()).isDowned(), "still downed");
 			helper.assertValueEqual(Hc.state().get(t.getUUID()).deaths(), 0, "no death");
 			helper.setBlock(new BlockPos(1, 1, 4), Blocks.STONE);
-			Vec3 away = helper.absoluteVec(new Vec3(1, 2, 4)); // 4 blocks from the start position: breaks the channel next tick
+			Vec3 away = helper.absoluteVec(new Vec3(1, 2, 4)); // 4 blocks from the start position: breaks the channel
 			r.teleportTo(helper.getLevel(), away.x, away.y, away.z, Set.of(), 0f, 0f, false);
-		});
-		helper.runAfterDelay(74, () -> {
+			Hc.revive().tick();
 			helper.assertFalse(Hc.revive().isChanneling(t.getUUID()), "channel broke");
-			helper.assertFalse(Hc.state().get(t.getUUID()).isDownedPaused(), "clock resumed");
-			long left = Hc.state().get(t.getUUID()).downedTicksRemaining(Hc.state().now());
-			helper.assertTrue(left > 30 && left <= 40, "resumed from the 40 ticks that were left, got " + left);
-		});
-		helper.runAfterDelay(130, () -> {
-			try {
-				helper.assertTrue(t.isDeadOrDying(), "bled out once the resumed clock ran down");
-				helper.assertValueEqual(Hc.state().get(t.getUUID()).deaths(), 1, "death counted");
-			} finally {
-				TestPlayers.leave(t);
-				TestPlayers.leave(r);
-			}
-			helper.succeed();
-		});
+			rec = Hc.state().get(t.getUUID());
+			helper.assertFalse(rec.isDownedPaused(), "clock resumed");
+			long left = rec.downedMillisRemaining(Hc.state().now());
+			helper.assertTrue(left > 1_900L && left <= 2_000L, "resumed from the 2 s that were left, got " + left);
+			Hc.downed().tick();
+			helper.assertTrue(t.isAlive(), "the resumed clock has not run out yet");
+			offset[0] = 63_000L; // three more seconds
+			Hc.downed().tick();
+			helper.assertTrue(t.isDeadOrDying(), "bled out once the resumed clock ran down");
+			helper.assertValueEqual(Hc.state().get(t.getUUID()).deaths(), 1, "death counted");
+		} finally {
+			Hc.state().setClock(System::currentTimeMillis);
+			TestPlayers.leave(t);
+			TestPlayers.leave(r);
+		}
+		helper.succeed();
 	}
 
 	@GameTest(maxTicks = 220)

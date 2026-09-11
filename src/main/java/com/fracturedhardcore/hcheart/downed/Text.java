@@ -9,8 +9,9 @@ import net.minecraft.network.chat.MutableComponent;
 public final class Text {
 	private Text() {}
 
-	public static String mmss(long ticks) {
-		long s = Math.max(0, ticks) / 20;
+	/** m:ss from milliseconds, rounded up so 1 ms left still reads 0:01 and a full clock reads 3:00. */
+	public static String mmss(long ms) {
+		long s = (Math.max(0, ms) + 999) / 1000;
 		return String.format("%d:%02d", s / 60, s % 60);
 	}
 	public static MutableComponent info(String s) { return Component.literal(s).withStyle(ChatFormatting.GRAY); }

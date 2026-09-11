@@ -8,6 +8,7 @@ public final class DeathRules {
 
 	/** Called when a player's health would drop to zero. */
 	public static Outcome onLethalDamage(PlayerRecord rec, boolean bypassesInvulnerability) {
+		if (rec.pendingKill()) return Outcome.TRUE_DEATH;     // bled out offline: this death was already counted; any kill settles it
 		if (bypassesInvulnerability) return Outcome.TRUE_DEATH; // void, /kill, bleed-out
 		if (rec.isDowned()) return Outcome.TRUE_DEATH;           // only bypass damage reaches here anyway
 		if (rec.finalLife()) return Outcome.TRUE_DEATH;

@@ -23,6 +23,10 @@ public final class DeathEvents {
 			Services s = HcHeartMod.services();
 			if (s == null || !(entity instanceof ServerPlayer player)) return;
 			s.downed().clear(player, "died");
+			if (s.state().get(player.getUUID()).pendingKill()) { // bled out offline: counted and announced when the clock ran out
+				s.state().applyPendingKill(player.getUUID());
+				return;
+			}
 			PlayerRecord rec = s.state().recordDeath(player.getUUID());
 			Component line = Messages.othersDeathLine(player.getGameProfile().name(), rec);
 			for (ServerPlayer other : s.server().getPlayerList().getPlayers()) {
