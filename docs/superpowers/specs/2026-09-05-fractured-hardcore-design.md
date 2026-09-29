@@ -1,6 +1,6 @@
 # Fractured Hardcore (`hcheart`) — Design Spec
 
-Date: 2026-09-05 · Target: Minecraft Java **26.2**, Fabric Loader 0.19.5, Fabric API 0.159.0+26.2
+Date: 2026-09-05 · Target: Minecraft Java **26.3** since 0.2.0 (2026-09-29; 26.2 for 0.1.x), Fabric Loader 0.19.5, Fabric API 0.161.0+26.3
 
 This document is the implementation baseline for a server-side Fabric mod that replaces vanilla
 hardcore's instant permadeath with a three-tier survival system (Downed → True death → Final life)
@@ -11,7 +11,7 @@ Guiding rule from the brief: **reliability outranks features; boring beats cleve
 
 ---
 
-## 1. Toolchain facts verified against the real 26.2 artifacts
+## 1. Toolchain facts verified against the real 26.2 artifacts (re-verified on 26.3 for 0.2.0, see D26)
 
 | Item | Value | Why it matters |
 |---|---|---|
@@ -457,6 +457,14 @@ set to the `list` slot. Written with `deaths` on every state change, by player *
   end the wait. Two steps so a stray click in chat cannot cost two hearts; the confirm reuses
   `bleedOut`, so there is exactly one downed → dead route and the penalty is identical. Audit event
   `GAVE_UP`. Requested by the owner after the first live session.
+- **D26 · 26.3 port** (0.2.0, 2026-09-29). Loom 1.18, Gradle 9.7.1, Fabric API 0.161.0+26.3, still
+  Java 25 and Mojang mappings (no Yarn). Every mixin target, Fabric event and API signature in §1
+  and §13 was re-checked with `javap` against the 26.3 jar and is unchanged, including the two
+  vanilla facts D23 and D25 rest on (`isInvulnerableTo` gating on `hasClientLoaded`, hand-based
+  `checkTotemDeathProtection`). Three things moved: `Player.drop(ItemStack, boolean)` →
+  `ServerPlayer.drop(ItemStack, boolean, Prediction)` (`SERVER_ONLY` for a command drop); the
+  `recipe_crafted` condition key `recipe_id` → `recipes`; resource-pack format 88 → 97 (new zip,
+  new SHA-1). The full suite ran unchanged and green.
 - **D18 · Downed crawl speed −75 %** (0.1.2), down from the brief's −50 %: the owner found half
   speed too fast in play. One constant (`Rules.DOWNED_SPEED_MULTIPLIER`); the gametest pins the
   effective value at 0.025 (a quarter of the 0.1 base).

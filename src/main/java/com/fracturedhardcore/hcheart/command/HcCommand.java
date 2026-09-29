@@ -23,6 +23,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionCheck;
 import net.minecraft.server.permissions.Permissions;
 import net.minecraft.server.players.NameAndId;
+import net.minecraft.util.Prediction;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 
@@ -151,7 +152,7 @@ public final class HcCommand {
 		if (s == null) return 0;
 		ServerPlayer target = EntityArgument.getPlayer(ctx, "player");
 		ItemStack hearts = HeartItem.create(count);
-		if (!target.getInventory().add(hearts)) target.drop(hearts, false);
+		if (!target.getInventory().add(hearts)) target.drop(hearts, false, Prediction.SERVER_ONLY);
 		s.state().audit().log(target.getUUID(), target.getGameProfile().name(), "GIVE", count + " heart(s) by " + ctx.getSource().getTextName());
 		ctx.getSource().sendSuccess(() -> Text.gold("Gave " + Messages.hearts(count) + " to " + target.getGameProfile().name() + "."), true);
 		return count;

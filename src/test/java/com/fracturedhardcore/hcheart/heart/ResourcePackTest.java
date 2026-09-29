@@ -15,10 +15,10 @@ import org.junit.jupiter.api.Test;
 class ResourcePackTest {
 	private static final Path ROOT = Path.of("resourcepack");
 
-	@Test void packMetaTargetsThe26_2ResourceFormat() throws IOException {
+	@Test void packMetaTargetsThe26_3ResourceFormat() throws IOException {
 		JsonObject pack = json("pack.mcmeta").getAsJsonObject("pack");
-		assertEquals(88, pack.getAsJsonArray("min_format").get(0).getAsInt());
-		assertEquals(88, pack.get("max_format").getAsInt());
+		assertEquals(97, pack.getAsJsonArray("min_format").get(0).getAsInt());
+		assertEquals(97, pack.get("max_format").getAsInt());
 		assertTrue(Files.exists(ROOT.resolve("pack.png")));
 	}
 

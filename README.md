@@ -8,12 +8,12 @@
 
 <p align="center">
   <a href="https://github.com/MusaMisto/FracturedHardcore/actions/workflows/build.yml"><img src="https://github.com/MusaMisto/FracturedHardcore/actions/workflows/build.yml/badge.svg" alt="build"></a>
-  <img src="https://img.shields.io/badge/Minecraft-26.2-62B47A?logo=minecraft&logoColor=white" alt="Minecraft 26.2">
+  <img src="https://img.shields.io/badge/Minecraft-26.3-62B47A?logo=minecraft&logoColor=white" alt="Minecraft 26.3">
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.5-DBB69B" alt="Fabric Loader 0.19.5">
-  <img src="https://img.shields.io/badge/Fabric%20API-0.159.0%2B26.2-DBB69B" alt="Fabric API 0.159.0+26.2">
+  <img src="https://img.shields.io/badge/Fabric%20API-0.161.0%2B26.3-DBB69B" alt="Fabric API 0.161.0+26.3">
   <img src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white" alt="Java 25">
-  <img src="https://img.shields.io/badge/Gradle-9.5.1-02303A?logo=gradle&logoColor=white" alt="Gradle 9.5.1">
-  <img src="https://img.shields.io/badge/Loom-1.17-1F6FEB" alt="Fabric Loom 1.17">
+  <img src="https://img.shields.io/badge/Gradle-9.7.1-02303A?logo=gradle&logoColor=white" alt="Gradle 9.7.1">
+  <img src="https://img.shields.io/badge/Loom-1.18-1F6FEB" alt="Fabric Loom 1.18">
   <img src="https://img.shields.io/badge/Mappings-Mojang%20official-5865F2" alt="Mojang mappings">
   <img src="https://img.shields.io/badge/Side-server--only-2EA043" alt="server-side only">
   <img src="https://img.shields.io/badge/Tests-36%20unit%20%C2%B7%2043%20gametest-2EA043" alt="Tests: 36 unit, 43 gametest">
@@ -22,7 +22,7 @@
 </p>
 
 **Fractured Hardcore** (mod id `hcheart`) is a **server-side** [Fabric](https://fabricmc.net) mod for Minecraft Java
-**26.2** that replaces vanilla hardcore's instant permadeath with a three-tier survival system. Lethal damage makes you
+**26.3** that replaces vanilla hardcore's instant permadeath with a three-tier survival system. Lethal damage makes you
 *downed* instead of dead; a friend can revive you. If nobody does, you die for real and your maximum health drops one
 step down the ladder **10 → 8 → 6 → 4 hearts**. At four hearts you are on your final life. The fourth death is permanent.
 A craftable **Crimson Heart** buys one step back, at a price that only ever goes up.
@@ -146,9 +146,9 @@ accepted as an ingredient in **any** recipe (including the beacon recipe and the
 
 | Requirement | Version |
 |---|---|
-| Minecraft Java dedicated server | 26.2 |
+| Minecraft Java dedicated server | 26.3 |
 | Fabric Loader | ≥ 0.19.5 |
-| Fabric API | 0.159.0+26.2 or newer for 26.2 |
+| Fabric API | 0.161.0+26.3 or newer for 26.3 |
 | Java | 25 |
 
 1. Download `fractured-hardcore-<version>.jar` from the [releases](https://github.com/MusaMisto/FracturedHardcore/releases)
@@ -163,8 +163,8 @@ accepted as an ingredient in **any** recipe (including the beacon recipe and the
    the pack is built reproducibly, so `shasum -a 1` on your copy gives the same value):
 
    ```properties
-   resource-pack=https://github.com/MusaMisto/FracturedHardcore/releases/download/v0.1.5/fractured-hardcore-resourcepack-0.1.5.zip
-   resource-pack-sha1=1223e50c22fd2ca07e44f9c48c13ef697c86ca2d
+   resource-pack=https://github.com/MusaMisto/FracturedHardcore/releases/download/v0.2.0/fractured-hardcore-resourcepack-0.2.0.zip
+   resource-pack-sha1=16300f1429a067104380d735d634a1a7446aa29d
    resource-pack-prompt={"text":"Fractured Hardcore: draws the Crimson Heart as a heart. Optional."}
    require-resource-pack=false
    ```
@@ -210,13 +210,13 @@ Everything below describes the code **as it is on `main`**. If you change the co
 
 | Component | Value | Notes |
 |---|---|---|
-| Minecraft | 26.2 | `gradle.properties` → `minecraft_version` |
-| Mappings | **Mojang official** | Loom's default; there is no Yarn for 26.2. Class names are `ServerPlayer`, `Attributes.MAX_HEALTH`, `SavedData`, … |
+| Minecraft | 26.3 | `gradle.properties` → `minecraft_version`; 26.2 needs the 0.1.x line |
+| Mappings | **Mojang official** | Loom's default; there is no Yarn for 26.3. Class names are `ServerPlayer`, `Attributes.MAX_HEALTH`, `SavedData`, … |
 | Fabric Loader | 0.19.5 | bundles MixinExtras 0.5.x (`@WrapOperation` is available) |
-| Fabric API | 0.159.0+26.2 | events, gametest API, command API |
-| Fabric Loom | 1.17-SNAPSHOT | Gradle plugin; also provides the `runGameTest` task via `fabricApi.configureTests` |
-| Gradle | 9.5.1 (wrapper) | configuration cache disabled (Loom) |
-| Java | 25 | `options.release = 25`; Minecraft 26.2 requires it |
+| Fabric API | 0.161.0+26.3 | events, gametest API, command API |
+| Fabric Loom | 1.18-SNAPSHOT | Gradle plugin; also provides the `runGameTest` task via `fabricApi.configureTests` |
+| Gradle | 9.7.1 (wrapper) | configuration cache disabled (Loom) |
+| Java | 25 | `options.release = 25`; Minecraft 26.3 requires it |
 | Tests | JUnit 5.12 + fabric-loader-junit, fabric-gametest-api-v1 | |
 
 JDK 25 is not the macOS default. On the author's machine it is `brew install openjdk@25`, then
@@ -280,7 +280,7 @@ the jar and the resource-pack zip as one artifact.
 ├── src/gametest/                 gametest source set (own mod id hcheart-gametest)
 │   ├── java/…/gametest/          TestPlayers (harness), Hc (service access), 6 test classes
 │   └── resources/                fabric.mod.json (entrypoints), test_environment/isolated.json
-├── resourcepack/                 optional client pack: pack.mcmeta (format 88), items/nether_star.json select, heart model, 16×16 sprite
+├── resourcepack/                 optional client pack: pack.mcmeta (format 97), items/nether_star.json select, heart model, 16×16 sprite
 ├── docs/superpowers/specs/       design spec with every decision and deviation from the original brief
 ├── docs/superpowers/plans/       the implementation plan the code was built from
 ├── docs/assets/                  logo, heart.png (the sprite reference)
@@ -292,7 +292,7 @@ the jar and the resource-pack zip as one artifact.
 
 ```mermaid
 flowchart TB
-    subgraph Vanilla["Minecraft 26.2 (Mojang mappings)"]
+    subgraph Vanilla["Minecraft 26.3 (Mojang mappings)"]
         V1["LivingEntity.hurtServer / die"]
         V2["PlayerList.placeNewPlayer / respawn"]
         V3["ServerGamePacketListenerImpl"]
@@ -501,7 +501,7 @@ All in `core/Rules.java`. Changing them changes unit-test expectations too.
 ### Testing
 
 **Unit tests** (`src/test/java`, JUnit 5, no server): the whole `core` package, the codec round-trip, and `ResourcePackTest`
-(the pack under `resourcepack/` uses format 88, selects on `HeartItem.MODEL_KEY`, and ships a 16×16 sprite). Run with
+(the pack under `resourcepack/` uses format 97, selects on `HeartItem.MODEL_KEY`, and ships a 16×16 sprite). Run with
 `./gradlew test`. They are the specification of the rules; if you change a rule, change the test first.
 
 **Gametests** (`src/gametest`, `fabric-gametest-api-v1`): a headless `GameTestServer` boots with the mod and runs every
@@ -521,7 +521,7 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 
 - Mock players are real `ServerPlayer`s pushed through `PlayerList.placeNewPlayer` with a dead-end netty `Connection`, so
   the real join handler runs. They spawn survival, fed, on a stone block at the requested structure-relative position.
-- 26.2 keeps a player **invulnerable until its client reports loaded** (`connection.hasClientLoaded()`); the harness sends
+- 26.2+ keeps a player **invulnerable until its client reports loaded** (`connection.hasClientLoaded()`); the harness sends
   `ServerboundPlayerLoadedPacket` for you. Without it no damage lands.
 - A mock connection is not registered with the network listener, so `Player.tick()` would never run (no cooldowns, food,
   pose updates). The harness ticks `connection.tick()` every test tick via `helper.onEachTick`.
@@ -540,6 +540,11 @@ Harness facts you need before writing a gametest (all encoded in `TestPlayers`):
 - To add a test class, register it under `fabric-gametest` in the gametest `fabric.mod.json`.
 
 ### Upgrading Minecraft or Fabric
+
+What the 26.2 → 26.3 port (0.2.0) actually touched, as a calibration for the next one: no mixin target, event or persistence
+API moved; `Player.drop(ItemStack, boolean)` became `ServerPlayer.drop(ItemStack, boolean, Prediction)`; the advancement
+trigger `recipe_crafted` renamed its condition `recipe_id` → `recipes`; the resource-pack format went 88 → 97, which
+changes the pack zip and its SHA-1. Everything else was version numbers.
 
 1. Check what exists: `https://meta.fabricmc.net/v2/versions/loader/<mc>` and the Fabric API versions on Modrinth; the
    example mod at `github.com/FabricMC/fabric-example-mod/tree/<mc>` shows the Loom/Gradle/Java versions to use.

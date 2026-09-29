@@ -2,7 +2,7 @@
 	"criteria": {
 		"crafted": {
 			"trigger": "minecraft:recipe_crafted",
-			"conditions": { "recipe_id": "hcheart:crimson_heart" }
+			"conditions": { "recipes": "hcheart:crimson_heart" }
 		}
 	},
 	"rewards": { "function": "hcheart:crafted" }

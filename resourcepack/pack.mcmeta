@@ -2,9 +2,9 @@
 	"pack": {
 		"description": "Fractured Hardcore: Crimson Heart texture (optional)",
 		"min_format": [
-			88,
+			97,
 			0
 		],
-		"max_format": 88
+		"max_format": 97
 	}
 }
